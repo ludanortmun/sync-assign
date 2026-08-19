@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build release artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Build and package binaries
+        shell: bash
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+
+          mkdir -p dist
+          archive_version="${GITHUB_REF_NAME#v}"
+
+          build_binary() {
+            local goos="$1"
+            local goarch="$2"
+            local binary="sync-assign-${goos}-${goarch}"
+            local archive="sync-assign_${archive_version}_${goos}_${goarch}.tar.gz"
+
+            GOOS="${goos}" GOARCH="${goarch}" \
+              go build -trimpath \
+                -ldflags="-s -w -X 'main.version=${GITHUB_REF_NAME}'" \
+                -o "dist/${binary}" .
+            tar -C dist -czf "dist/${archive}" "${binary}"
+            rm "dist/${binary}"
+          }
+
+          build_binary darwin arm64
+          build_binary linux amd64
+
+          (
+            cd dist
+            sha256sum ./*.tar.gz > SHA256SUMS
+          )
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
