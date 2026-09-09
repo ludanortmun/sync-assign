@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/alecthomas/kong"
 	"github.com/ludanortmun/sync-assign/internal/commands"
@@ -70,9 +71,47 @@ func (command *initStudentCLI) Run(ctx context.Context) error {
 	})
 }
 
+type checkCLI struct {
+	TeacherCommit string         `help:"Pin teacher configuration and baseline to a commit ID (default: latest main)."`
+	Timeout       *time.Duration `help:"Positive timeout per check, including suite setup (default: config or 120s)."`
+	AssignmentID  string         `arg:"" name:"id" help:"Assignment ID from the teacher configuration."`
+}
+
+func (command *checkCLI) Run(ctx context.Context) error {
+	root, err := commands.CurrentDirectory()
+	if err != nil {
+		return err
+	}
+	return commands.NewCheck().Run(ctx, command.AssignmentID, commands.CheckOptions{
+		RepositoryRoot: root,
+		TeacherCommit:  command.TeacherCommit,
+		Timeout:        command.Timeout,
+	})
+}
+
+type gradeCLI struct {
+	TeacherCommit string         `help:"Pin teacher configuration and baseline to a commit ID (default: latest main)."`
+	Timeout       *time.Duration `help:"Positive timeout per check, including suite setup (default: config or 120s)."`
+	AssignmentID  string         `arg:"" name:"id" help:"Assignment ID from the teacher configuration."`
+}
+
+func (command *gradeCLI) Run(ctx context.Context) error {
+	root, err := commands.CurrentDirectory()
+	if err != nil {
+		return err
+	}
+	return commands.NewGrade().Run(ctx, command.AssignmentID, commands.GradeOptions{
+		RepositoryRoot: root,
+		TeacherCommit:  command.TeacherCommit,
+		Timeout:        command.Timeout,
+	})
+}
+
 type cliModel struct {
 	Version     kong.VersionFlag `help:"Print version information and quit."`
 	Sync        syncCLI          `cmd:"" default:"withargs" hidden:"" help:"Sync an assignment."`
+	Check       checkCLI         `cmd:"" help:"Check an assignment in the current student repository."`
+	Grade       gradeCLI         `cmd:"" help:"Grade an assignment from the newest commit at or before the due date."`
 	InitStudent initStudentCLI   `cmd:"" name:"init-student" help:"Create a student repository configuration."`
 }
 
@@ -98,7 +137,7 @@ func stdinIsTerminal() bool {
 
 func helpPrinter(options kong.HelpOptions, ctx *kong.Context) error {
 	if ctx.Selected() == nil {
-		if _, err := fmt.Fprintln(ctx.Stdout, "Usage: sync-assign <id> [flags]\n       sync-assign init-student [<teacher-repo>] [flags]"); err != nil {
+		if _, err := fmt.Fprintln(ctx.Stdout, "Usage: sync-assign <id> [flags]\n       sync-assign check <id>\n       sync-assign grade <id>\n       sync-assign init-student [<teacher-repo>] [flags]"); err != nil {
 			return err
 		}
 		options.NoAppSummary = true
@@ -108,7 +147,7 @@ func helpPrinter(options kong.HelpOptions, ctx *kong.Context) error {
 
 func shortHelpPrinter(options kong.HelpOptions, ctx *kong.Context) error {
 	if ctx.Selected() == nil {
-		_, err := fmt.Fprintln(ctx.Stdout, "Usage: sync-assign <id> [flags]\n       sync-assign init-student [<teacher-repo>] [flags]")
+		_, err := fmt.Fprintln(ctx.Stdout, "Usage: sync-assign <id> [flags]\n       sync-assign check <id>\n       sync-assign grade <id>\n       sync-assign init-student [<teacher-repo>] [flags]")
 		return err
 	}
 	return kong.DefaultShortHelpPrinter(options, ctx)

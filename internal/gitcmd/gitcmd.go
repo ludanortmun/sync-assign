@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // Runner executes git with a command-scoped working directory.
@@ -106,6 +107,46 @@ func (c *Client) UpdateMirror(ctx context.Context, repository, branch string) er
 	return nil
 }
 
+// CurrentBranch returns the currently checked out branch name.
+func (c *Client) CurrentBranch(ctx context.Context, repository string) (string, error) {
+	if err := require("repository", repository); err != nil {
+		return "", err
+	}
+
+	stdout, err := c.run(ctx, repository, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(stdout)), nil
+}
+
+// FastForwardToRemote fetches branch from origin and fast-forwards to it,
+// returning the fetched commit even when HEAD contains local-only commits.
+func (c *Client) FastForwardToRemote(ctx context.Context, repository, branch string) (string, error) {
+	if err := require("repository", repository); err != nil {
+		return "", err
+	}
+	if err := require("branch", branch); err != nil {
+		return "", err
+	}
+
+	if _, err := c.run(ctx, repository, "fetch", "origin", branch); err != nil {
+		return "", err
+	}
+	stdout, err := c.run(ctx, repository, "rev-parse", "--verify", "FETCH_HEAD^{commit}")
+	if err != nil {
+		return "", fmt.Errorf("resolve fetched branch %q: %w", branch, err)
+	}
+	revision := strings.TrimSpace(string(stdout))
+	if revision == "" {
+		return "", fmt.Errorf("resolve fetched branch %q: empty revision", branch)
+	}
+	if _, err := c.run(ctx, repository, "merge", "--ff-only", revision); err != nil {
+		return "", fmt.Errorf("fast-forward branch %q to remote: local branch has diverged from origin (not a fast-forward): %w", branch, err)
+	}
+	return revision, nil
+}
+
 // IsDirty reports whether repository has tracked, untracked, or ignored changes
 // under path.
 func (c *Client) IsDirty(ctx context.Context, repository, path string) (bool, error) {
@@ -134,6 +175,62 @@ func (c *Client) IsDirty(ctx context.Context, repository, path string) (bool, er
 	return len(stdout) > 0, nil
 }
 
+// CommitsUpTo returns the newest commit on ref at or before upTo.
+func (c *Client) CommitsUpTo(ctx context.Context, repository, ref string, upTo time.Time) (string, error) {
+	if err := require("repository", repository); err != nil {
+		return "", err
+	}
+	if err := require("ref", ref); err != nil {
+		return "", err
+	}
+
+	stdout, err := c.run(ctx, repository, "log", ref, "--date=iso-strict", "--format=%H|%cI")
+	if err != nil {
+		return "", err
+	}
+
+	for _, line := range strings.Split(strings.TrimSpace(string(stdout)), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+
+		hash, timestamp, ok := strings.Cut(line, "|")
+		if !ok || strings.TrimSpace(hash) == "" || strings.TrimSpace(timestamp) == "" {
+			return "", fmt.Errorf("parse git log output for %q: malformed line %q", ref, line)
+		}
+
+		commitTime, err := time.Parse(time.RFC3339, timestamp)
+		if err != nil {
+			return "", fmt.Errorf("parse git log output for %q: parse commit time %q: %w", ref, timestamp, err)
+		}
+		if !commitTime.After(upTo) {
+			return hash, nil
+		}
+	}
+
+	return "", fmt.Errorf("no commit at or before %s found in %q history", upTo.Format(time.RFC3339), ref)
+}
+
+// CommitTime returns the committer timestamp for commit.
+func (c *Client) CommitTime(ctx context.Context, repository, commit string) (time.Time, error) {
+	if err := require("repository", repository); err != nil {
+		return time.Time{}, err
+	}
+	if err := require("commit", commit); err != nil {
+		return time.Time{}, err
+	}
+
+	stdout, err := c.run(ctx, repository, "log", "-1", "--format=%cI", commit)
+	if err != nil {
+		return time.Time{}, err
+	}
+	commitTime, err := time.Parse(time.RFC3339, strings.TrimSpace(string(stdout)))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parse commit time for %q: %w", commit, err)
+	}
+	return commitTime, nil
+}
+
 // StageAssignment stages changes under assignmentDir, including deletions.
 func (c *Client) StageAssignment(ctx context.Context, repository, assignmentDir string) error {
 	if err := require("repository", repository); err != nil {
@@ -157,6 +254,35 @@ func (c *Client) Commit(ctx context.Context, repository, message string) error {
 	}
 
 	_, err := c.run(ctx, repository, "commit", "--message", message)
+	return err
+}
+
+// AddWorktree adds a detached worktree at commit.
+func (c *Client) AddWorktree(ctx context.Context, repository, worktreePath, commit string) error {
+	if err := require("repository", repository); err != nil {
+		return err
+	}
+	if err := require("worktree path", worktreePath); err != nil {
+		return err
+	}
+	if err := require("commit", commit); err != nil {
+		return err
+	}
+
+	_, err := c.run(ctx, repository, "worktree", "add", "--detach", worktreePath, commit)
+	return err
+}
+
+// RemoveWorktree removes a worktree by path.
+func (c *Client) RemoveWorktree(ctx context.Context, repository, worktreePath string) error {
+	if err := require("repository", repository); err != nil {
+		return err
+	}
+	if err := require("worktree path", worktreePath); err != nil {
+		return err
+	}
+
+	_, err := c.run(ctx, repository, "worktree", "remove", "--force", worktreePath)
 	return err
 }
 

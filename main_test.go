@@ -65,6 +65,44 @@ func TestCLIParsesInitStudentCommand(t *testing.T) {
 	}
 }
 
+func TestCLIParsesCheckCommand(t *testing.T) {
+	cli := &cliModel{}
+	parser, err := kong.New(cli, kong.Name("sync-assign"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	context, err := parser.Parse([]string{"check", "lab-1"})
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if context.Command() != "check <id>" {
+		t.Fatalf("command = %q", context.Command())
+	}
+	if cli.Check.AssignmentID != "lab-1" {
+		t.Fatalf("parsed check command = %#v", cli.Check)
+	}
+}
+
+func TestCLIParsesGradeCommand(t *testing.T) {
+	cli := &cliModel{}
+	parser, err := kong.New(cli, kong.Name("sync-assign"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	context, err := parser.Parse([]string{"grade", "lab-1"})
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if context.Command() != "grade <id>" {
+		t.Fatalf("command = %q", context.Command())
+	}
+	if cli.Grade.AssignmentID != "lab-1" {
+		t.Fatalf("parsed grade command = %#v", cli.Grade)
+	}
+}
+
 func TestVersionIsInjectable(t *testing.T) {
 	original := version
 	version = "test-version"
@@ -113,6 +151,8 @@ func TestRootHelpShowsDefaultUsage(t *testing.T) {
 	_, _ = parser.Parse([]string{"--help"})
 	for _, want := range []string{
 		"Usage: sync-assign <id> [flags]",
+		"sync-assign check <id>",
+		"sync-assign grade <id>",
 		"sync-assign init-student [<teacher-repo>] [flags]",
 	} {
 		if !strings.Contains(output.String(), want) {
