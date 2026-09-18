@@ -16,6 +16,10 @@ func stringPointer(value string) *string {
 	return &value
 }
 
+func archetypePointer(value Archetype) *Archetype {
+	return &value
+}
+
 func TestLoadTeacher(t *testing.T) {
 	config, err := LoadTeacher(strings.NewReader(`
 assignments:
@@ -33,8 +37,45 @@ assignments:
 	if err != nil {
 		t.Fatalf("LoadTeacher returned an error: %v", err)
 	}
-	if got := config.Assignments["project"]; got != "final-project" {
-		t.Fatalf("Assignments[project] = %q, want final-project", got)
+	if got := config.Assignments["project"]; got.Path != "final-project" || got.Archetype != nil {
+		t.Fatalf("Assignments[project] = %#v, want scalar final-project with no archetype", got)
+	}
+}
+
+func TestLoadTeacherAssignmentMapping(t *testing.T) {
+	config, err := LoadTeacher(strings.NewReader(`
+assignments:
+  notebook:
+    path: notebook
+    archetype: python-jupyter
+  script:
+    path: script
+`))
+	if err != nil {
+		t.Fatalf("LoadTeacher returned an error: %v", err)
+	}
+	notebook := config.Assignments["notebook"]
+	if notebook.Path != "notebook" || notebook.Archetype == nil || *notebook.Archetype != ArchetypePythonJupyter {
+		t.Fatalf("Assignments[notebook] = %#v, want python-jupyter mapping", notebook)
+	}
+	if script := config.Assignments["script"]; script.Path != "script" || script.Archetype != nil {
+		t.Fatalf("Assignments[script] = %#v, want path with unset archetype", script)
+	}
+}
+
+func TestLoadTeacherRejectsInvalidAssignmentMapping(t *testing.T) {
+	tests := map[string]string{
+		"unknown key":       "path: lab\nextra: true",
+		"invalid archetype": "path: lab\narchetype: ruby",
+		"invalid path":      "path: assignments/lab\narchetype: python",
+	}
+	for name, assignment := range tests {
+		t.Run(name, func(t *testing.T) {
+			input := "assignments:\n  lab:\n    " + strings.ReplaceAll(assignment, "\n", "\n    ") + "\n"
+			if _, err := LoadTeacher(strings.NewReader(input)); err == nil {
+				t.Fatal("LoadTeacher accepted an invalid assignment mapping")
+			}
+		})
 	}
 }
 
@@ -54,7 +95,7 @@ func TestTeacherConfigRejectsUnsafeAssignments(t *testing.T) {
 	}
 	for name, directory := range tests {
 		t.Run(name, func(t *testing.T) {
-			config := TeacherConfig{Assignments: map[string]string{"lab": directory}}
+			config := TeacherConfig{Assignments: map[string]AssignmentSpec{"lab": {Path: directory}}}
 			if err := config.Validate(); err == nil {
 				t.Fatalf("Validate accepted %q", directory)
 			}
@@ -163,12 +204,23 @@ func TestWriteAndLoadFiles(t *testing.T) {
 	teacherFile := filepath.Join(directory, TeacherConfigFilename)
 	studentFile := filepath.Join(directory, StudentConfigFilename)
 
-	teacher := TeacherConfig{Assignments: map[string]string{"lab": "lab"}}
+	teacher := TeacherConfig{Assignments: map[string]AssignmentSpec{
+		"lab":      {Path: "lab"},
+		"notebook": {Path: "notebook", Archetype: archetypePointer(ArchetypePythonJupyter)},
+	}}
 	if err := WriteTeacherFile(teacherFile, teacher); err != nil {
 		t.Fatalf("WriteTeacherFile returned an error: %v", err)
 	}
-	if _, err := LoadTeacherFile(teacherFile); err != nil {
+	loadedTeacher, err := LoadTeacherFile(teacherFile)
+	if err != nil {
 		t.Fatalf("LoadTeacherFile returned an error: %v", err)
+	}
+	if loadedTeacher.Assignments["lab"].Archetype != nil {
+		t.Fatal("scalar assignment gained an archetype during roundtrip")
+	}
+	notebook := loadedTeacher.Assignments["notebook"]
+	if notebook.Archetype == nil || *notebook.Archetype != ArchetypePythonJupyter {
+		t.Fatalf("notebook archetype = %v, want python-jupyter", notebook.Archetype)
 	}
 
 	student := StudentConfig{

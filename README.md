@@ -15,6 +15,8 @@ directories; a student syncs one assignment at a time.
 - Git available on `PATH`
 - Access to the configured teacher repository
 - A student Git repository; commands must run from its root
+- [`uv`](https://docs.astral.sh/uv/) available on `PATH` when grading Python
+  assignments
 
 Release binaries are built for macOS on Apple silicon (`darwin/arm64`) and
 Linux on x86-64 (`linux/amd64`).
@@ -60,12 +62,17 @@ teacher-repository/
 ```yaml
 assignments:
   lab-1: lab-1
-  final-project: project
+  final-project:
+    path: project
+    archetype: python-jupyter
 ```
 
-Each key is the assignment ID students pass to the CLI. Each value must be the
-name of one top-level directory; absolute and nested paths are rejected. The
-default teacher branch is `main`.
+Each key is the assignment ID students pass to the CLI. A scalar value is the
+name of one top-level directory and leaves the archetype unset; it can be
+synced, but not graded. A mapping supplies `path` plus an `archetype` of
+`python` or `python-jupyter`. Assignment paths must be single top-level
+directory names; absolute and nested paths are rejected. The default teacher
+branch is `main`.
 
 ## Student setup
 
@@ -144,6 +151,46 @@ sync-assign init-student [<teacher-repo>] [flags]
 `--[no-]commit`, `--[no-]clean`, `--mirror-path`, `--[no-]ephemeral`, and
 `--branch` write the corresponding defaults to `.sync-assign.yml`.
 `--force` overwrites an existing student configuration.
+
+## Grade an assignment
+
+```sh
+sync-assign grade lab-1 --due=2026-09-18
+```
+
+Grading selects the latest commit on the requested student branch at or before
+the due date and evaluates it in a detached temporary worktree. The branch
+defaults to the currently checked-out branch. `--due` accepts RFC3339 (including
+its explicit offset) or `YYYY-MM-DD`; a date-only value means the end of that
+day in the machine's local time zone.
+
+### Grade flags
+
+| Flag | Behavior |
+| --- | --- |
+| `--due=DATE` | Required cutoff in RFC3339 or `YYYY-MM-DD` form. |
+| `--branch=BRANCH` | Select the student branch; defaults to the current branch. |
+| `--pull` | Update from `origin` first. The checked-out branch is fetched and fast-forwarded only; another local branch is updated directly by fetch, which refuses non-fast-forward updates. |
+| `--mirror-path=PATH` | Override the local teacher mirror path and disable ephemeral mode. |
+| `--[no-]ephemeral` | Enable or disable a temporary teacher clone; enabling it clears a configured mirror path. |
+| `--teacher-branch=BRANCH` | Override the teacher repository branch. |
+| `-h, --help` | Show help. |
+
+The current teacher mirror is the integrity baseline, even when grading an
+older student commit. Assignments without an archetype are not gradable.
+Checks run in this order:
+
+- `python`: Python tests in `tests/`, then integrity checks for every
+  teacher-supplied file under a `tests` directory and every `test_*.py`.
+- `python-jupyter`: Python tests when a `tests/` directory exists (otherwise
+  that check is skipped), notebook tests, cleared notebook output/execution
+  counts, an ordered teacher-cell subsequence check, then the same test-file
+  integrity check.
+
+Python tests run through `uv run` with `pytest`; notebook tests use
+`pytest --nbmake` with `nbmake`. If the assignment has `requirements.txt`, uv
+also loads it with `--with-requirements`; pytest and nbmake are supplied with
+uv's `--with` options.
 
 ## Teacher mirror behavior
 

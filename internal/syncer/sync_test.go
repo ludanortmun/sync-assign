@@ -459,7 +459,11 @@ func TestSyncRejectsUnsupportedFileType(t *testing.T) {
 }
 
 func teacherConfig(directory string) config.TeacherConfig {
-	return config.TeacherConfig{Assignments: map[string]string{"assignment": directory}}
+	return config.TeacherConfig{
+		Assignments: map[string]config.AssignmentSpec{
+			"assignment": {Path: directory},
+		},
+	}
 }
 
 func syncRoots(t *testing.T) (string, string) {

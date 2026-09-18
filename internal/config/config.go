@@ -13,11 +13,21 @@ import (
 const (
 	TeacherConfigFilename = "sync-assign.yml"
 	StudentConfigFilename = ".sync-assign.yml"
+
+	ArchetypePython        Archetype = "python"
+	ArchetypePythonJupyter Archetype = "python-jupyter"
 )
 
-// TeacherConfig maps assignment IDs to directories in the teacher repository.
+type Archetype string
+
+type AssignmentSpec struct {
+	Path      string     `yaml:"path"`
+	Archetype *Archetype `yaml:"archetype,omitempty"`
+}
+
+// TeacherConfig maps assignment IDs to assignment specifications.
 type TeacherConfig struct {
-	Assignments map[string]string `yaml:"assignments"`
+	Assignments map[string]AssignmentSpec `yaml:"assignments"`
 }
 
 // StudentConfig identifies the teacher repository and optional client defaults.
@@ -36,15 +46,22 @@ func (config TeacherConfig) Validate() error {
 	if len(config.Assignments) == 0 {
 		return fmt.Errorf("assignments must not be empty")
 	}
-	for id, directory := range config.Assignments {
+	for id, assignment := range config.Assignments {
 		if strings.TrimSpace(id) == "" {
 			return fmt.Errorf("assignment ID must not be empty")
 		}
 		if id != strings.TrimSpace(id) {
 			return fmt.Errorf("assignment ID %q must not have surrounding whitespace", id)
 		}
-		if err := validateAssignmentDirectory(directory); err != nil {
+		if err := validateAssignmentDirectory(assignment.Path); err != nil {
 			return fmt.Errorf("assignment %q: %w", id, err)
+		}
+		if assignment.Archetype != nil {
+			switch *assignment.Archetype {
+			case ArchetypePython, ArchetypePythonJupyter:
+			default:
+				return fmt.Errorf("assignment %q: unknown archetype %q", id, *assignment.Archetype)
+			}
 		}
 	}
 	return nil

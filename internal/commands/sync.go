@@ -156,21 +156,35 @@ func applySyncOverrides(studentConfig config.StudentConfig, options SyncOptions)
 	if options.Clean != nil {
 		studentConfig.Clean = options.Clean
 	}
-	if options.MirrorPath != nil {
-		studentConfig.TeacherPath = options.MirrorPath
+	return applyMirrorOverrides(
+		studentConfig,
+		options.MirrorPath,
+		options.Ephemeral,
+		options.Branch,
+	)
+}
+
+func applyMirrorOverrides(
+	studentConfig config.StudentConfig,
+	mirrorPath *string,
+	ephemeral *bool,
+	teacherBranch *string,
+) config.StudentConfig {
+	if mirrorPath != nil {
+		studentConfig.TeacherPath = mirrorPath
 		ephemeral := false
 		studentConfig.Ephemeral = &ephemeral
 		studentConfig.SkipMirror = nil
 	}
-	if options.Ephemeral != nil {
-		studentConfig.Ephemeral = options.Ephemeral
+	if ephemeral != nil {
+		studentConfig.Ephemeral = ephemeral
 		studentConfig.SkipMirror = nil
-		if *options.Ephemeral {
+		if *ephemeral {
 			studentConfig.TeacherPath = nil
 		}
 	}
-	if options.Branch != nil {
-		studentConfig.Branch = options.Branch
+	if teacherBranch != nil {
+		studentConfig.Branch = teacherBranch
 	}
 	return studentConfig
 }

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCloneAndUpdateMirror(t *testing.T) {
@@ -308,6 +309,342 @@ func TestCommandErrorCapturesOutput(t *testing.T) {
 	for _, want := range []string{"git --version", "standard output", "specific failure"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+}
+
+func TestCurrentBranch(t *testing.T) {
+	t.Parallel()
+
+	var calls [][]string
+	client := NewWithRunner(runnerFunc(func(_ context.Context, dir string, args ...string) ([]byte, []byte, error) {
+		if dir != "/repo" {
+			t.Errorf("git dir = %q, want /repo", dir)
+		}
+		calls = append(calls, append([]string(nil), args...))
+		return []byte("feature/grade\n"), nil, nil
+	}))
+
+	branch, err := client.CurrentBranch(context.Background(), "/repo")
+	if err != nil {
+		t.Fatalf("CurrentBranch() error = %v", err)
+	}
+	if branch != "feature/grade" {
+		t.Errorf("CurrentBranch() = %q, want %q", branch, "feature/grade")
+	}
+	assertGitCalls(t, calls, [][]string{
+		{"branch", "--show-current"},
+		{"check-ref-format", "--branch", "feature/grade"},
+	})
+}
+
+func TestCurrentBranchRejectsInvalidOutput(t *testing.T) {
+	t.Parallel()
+
+	sentinel := errors.New("invalid ref")
+	var calls [][]string
+	client := NewWithRunner(runnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, []byte, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if len(calls) == 1 {
+			return []byte("-grade\n"), nil, nil
+		}
+		return nil, []byte("fatal: '-grade' is not a valid branch name"), sentinel
+	}))
+
+	_, err := client.CurrentBranch(context.Background(), "/repo")
+	if !errors.Is(err, sentinel) || !strings.Contains(err.Error(), `validate current branch "-grade"`) {
+		t.Fatalf("CurrentBranch() error = %v, want invalid current branch error", err)
+	}
+	assertGitCalls(t, calls, [][]string{
+		{"branch", "--show-current"},
+		{"check-ref-format", "--branch", "-grade"},
+	})
+}
+
+func TestCommitBefore(t *testing.T) {
+	t.Parallel()
+
+	before := time.Date(2026, time.September, 18, 15, 10, 56, 0, time.FixedZone("PDT", -7*60*60))
+	var calls [][]string
+	client := NewWithRunner(runnerFunc(func(_ context.Context, dir string, args ...string) ([]byte, []byte, error) {
+		if dir != "/repo" {
+			t.Errorf("git dir = %q, want /repo", dir)
+		}
+		calls = append(calls, append([]string(nil), args...))
+		return []byte("abc123\n"), nil, nil
+	}))
+
+	sha, ok, err := client.CommitBefore(context.Background(), "/repo", "main", before)
+	if err != nil {
+		t.Fatalf("CommitBefore() error = %v", err)
+	}
+	if sha != "abc123" || !ok {
+		t.Errorf("CommitBefore() = (%q, %v), want (%q, true)", sha, ok, "abc123")
+	}
+	assertGitCalls(t, calls, [][]string{
+		{"check-ref-format", "--branch", "main"},
+		{"log", "--until", "2026-09-18T15:10:56-07:00", "-1", "--format=%H", "refs/heads/main"},
+	})
+}
+
+func TestGradeBranchesAreValidatedBeforeUse(t *testing.T) {
+	t.Parallel()
+
+	sentinel := errors.New("invalid ref")
+	tests := []struct {
+		name string
+		call func(*Client) error
+	}{
+		{
+			name: "commit before",
+			call: func(client *Client) error {
+				_, _, err := client.CommitBefore(context.Background(), "/repo", "--all", time.Now())
+				return err
+			},
+		},
+		{
+			name: "pull",
+			call: func(client *Client) error {
+				return client.PullBranch(context.Background(), "/repo", "--all", false)
+			},
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			var calls [][]string
+			client := NewWithRunner(runnerFunc(func(_ context.Context, _ string, args ...string) ([]byte, []byte, error) {
+				calls = append(calls, append([]string(nil), args...))
+				return nil, []byte("fatal: '--all' is not a valid branch name"), sentinel
+			}))
+			err := test.call(client)
+			if !errors.Is(err, sentinel) || !strings.Contains(err.Error(), `invalid branch "--all"`) {
+				t.Fatalf("error = %v, want invalid branch error", err)
+			}
+			assertGitCalls(t, calls, [][]string{{"check-ref-format", "--branch", "--all"}})
+		})
+	}
+}
+
+func TestCommitBeforeEmptyResult(t *testing.T) {
+	t.Parallel()
+
+	client := NewWithRunner(runnerFunc(func(context.Context, string, ...string) ([]byte, []byte, error) {
+		return []byte("\n"), nil, nil
+	}))
+	sha, ok, err := client.CommitBefore(context.Background(), "/repo", "main", time.Now())
+	if err != nil {
+		t.Fatalf("CommitBefore() error = %v", err)
+	}
+	if sha != "" || ok {
+		t.Errorf("CommitBefore() = (%q, %v), want (empty, false)", sha, ok)
+	}
+}
+
+func TestCommitBeforePrefersBranchOverSameNamedTag(t *testing.T) {
+	t.Parallel()
+
+	repository := filepath.Join(t.TempDir(), "repository")
+	runGit(t, "", "init", "--initial-branch=main", repository)
+	runGit(t, repository, "config", "user.name", "Sync Assign Test")
+	runGit(t, repository, "config", "user.email", "sync-assign@example.invalid")
+	writeFile(t, filepath.Join(repository, "answer.txt"), "first\n")
+	runGit(t, repository, "add", "answer.txt")
+	runGit(t, repository, "commit", "-m", "first")
+	runGit(t, repository, "tag", "main")
+	writeFile(t, filepath.Join(repository, "answer.txt"), "second\n")
+	runGit(t, repository, "commit", "-am", "second")
+	want := strings.TrimSpace(runGit(t, repository, "rev-parse", "refs/heads/main"))
+
+	got, found, err := New().CommitBefore(context.Background(), repository, "main", time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("CommitBefore() error = %v", err)
+	}
+	if !found || got != want {
+		t.Fatalf("CommitBefore() = (%q, %v), want (%q, true)", got, found, want)
+	}
+}
+
+func TestPullBranch(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		checkedOut bool
+		want       [][]string
+	}{
+		{
+			name:       "checked out",
+			checkedOut: true,
+			want: [][]string{
+				{"check-ref-format", "--branch", "topic"},
+				{"fetch", "origin", "refs/heads/topic:refs/remotes/origin/topic"},
+				{"merge", "--ff-only", "refs/remotes/origin/topic"},
+			},
+		},
+		{
+			name:       "not checked out",
+			checkedOut: false,
+			want: [][]string{
+				{"check-ref-format", "--branch", "topic"},
+				{"fetch", "origin", "refs/heads/topic:refs/heads/topic"},
+			},
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			var calls [][]string
+			client := NewWithRunner(runnerFunc(func(_ context.Context, dir string, args ...string) ([]byte, []byte, error) {
+				if dir != "/repo" {
+					t.Errorf("git dir = %q, want /repo", dir)
+				}
+				calls = append(calls, append([]string(nil), args...))
+				return nil, nil, nil
+			}))
+			if err := client.PullBranch(context.Background(), "/repo", "topic", test.checkedOut); err != nil {
+				t.Fatalf("PullBranch() error = %v", err)
+			}
+			assertGitCalls(t, calls, test.want)
+		})
+	}
+}
+
+func TestWorktreeCommands(t *testing.T) {
+	t.Parallel()
+
+	var calls [][]string
+	client := NewWithRunner(runnerFunc(func(_ context.Context, dir string, args ...string) ([]byte, []byte, error) {
+		if dir != "/repo" {
+			t.Errorf("git dir = %q, want /repo", dir)
+		}
+		calls = append(calls, append([]string(nil), args...))
+		return nil, nil, nil
+	}))
+
+	if err := client.AddWorktree(context.Background(), "/repo", "/worktree", "abc123"); err != nil {
+		t.Fatalf("AddWorktree() error = %v", err)
+	}
+	if err := client.RemoveWorktree(context.Background(), "/repo", "/worktree"); err != nil {
+		t.Fatalf("RemoveWorktree() error = %v", err)
+	}
+	assertGitCalls(t, calls, [][]string{
+		{"worktree", "add", "--detach", "/worktree", "abc123"},
+		{"worktree", "remove", "--force", "/worktree"},
+	})
+}
+
+func TestGradeHelpersValidateRequiredArguments(t *testing.T) {
+	t.Parallel()
+
+	client := NewWithRunner(runnerFunc(func(context.Context, string, ...string) ([]byte, []byte, error) {
+		t.Fatal("runner called for invalid arguments")
+		return nil, nil, nil
+	}))
+	before := time.Now()
+	tests := []struct {
+		name string
+		call func() error
+		want string
+	}{
+		{"current branch repository", func() error { _, err := client.CurrentBranch(context.Background(), " "); return err }, "repository"},
+		{"commit before repository", func() error { _, _, err := client.CommitBefore(context.Background(), "", "main", before); return err }, "repository"},
+		{"commit before branch", func() error { _, _, err := client.CommitBefore(context.Background(), "/repo", "", before); return err }, "branch"},
+		{"commit before time", func() error {
+			_, _, err := client.CommitBefore(context.Background(), "/repo", "main", time.Time{})
+			return err
+		}, "before time"},
+		{"pull repository", func() error { return client.PullBranch(context.Background(), "", "main", true) }, "repository"},
+		{"pull branch", func() error { return client.PullBranch(context.Background(), "/repo", "", true) }, "branch"},
+		{"add repository", func() error { return client.AddWorktree(context.Background(), "", "/worktree", "abc") }, "repository"},
+		{"add path", func() error { return client.AddWorktree(context.Background(), "/repo", "", "abc") }, "worktree path"},
+		{"add commit", func() error { return client.AddWorktree(context.Background(), "/repo", "/worktree", "") }, "commit"},
+		{"remove repository", func() error { return client.RemoveWorktree(context.Background(), "", "/worktree") }, "repository"},
+		{"remove path", func() error { return client.RemoveWorktree(context.Background(), "/repo", "") }, "worktree path"},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			err := test.call()
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Errorf("error = %v, want containing %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestGradeHelpersPropagateFailures(t *testing.T) {
+	t.Parallel()
+
+	sentinel := errors.New("runner failed")
+	tests := []struct {
+		name string
+		fail int
+		call func(*Client) error
+		want string
+	}{
+		{"current branch", 1, func(c *Client) error { _, err := c.CurrentBranch(context.Background(), "/repo"); return err }, "current branch"},
+		{"commit before validation", 1, func(c *Client) error {
+			_, _, err := c.CommitBefore(context.Background(), "/repo", "main", time.Now())
+			return err
+		}, "invalid branch"},
+		{"commit before log", 2, func(c *Client) error {
+			_, _, err := c.CommitBefore(context.Background(), "/repo", "main", time.Now())
+			return err
+		}, "commit"},
+		{"pull validation", 1, func(c *Client) error { return c.PullBranch(context.Background(), "/repo", "main", true) }, "invalid branch"},
+		{"pull fetch checked out", 2, func(c *Client) error { return c.PullBranch(context.Background(), "/repo", "main", true) }, "fetch"},
+		{"pull merge checked out", 3, func(c *Client) error { return c.PullBranch(context.Background(), "/repo", "main", true) }, "fast-forward"},
+		{"pull fetch other", 2, func(c *Client) error { return c.PullBranch(context.Background(), "/repo", "main", false) }, "fetch"},
+		{"add worktree", 1, func(c *Client) error { return c.AddWorktree(context.Background(), "/repo", "/worktree", "abc") }, "add detached worktree"},
+		{"remove worktree", 1, func(c *Client) error { return c.RemoveWorktree(context.Background(), "/repo", "/worktree") }, "remove worktree"},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			call := 0
+			client := NewWithRunner(runnerFunc(func(context.Context, string, ...string) ([]byte, []byte, error) {
+				call++
+				if call == test.fail {
+					return nil, []byte("details"), sentinel
+				}
+				return nil, nil, nil
+			}))
+			err := test.call(client)
+			if !errors.Is(err, sentinel) {
+				t.Fatalf("error = %v, want wrapped runner failure", err)
+			}
+			for _, want := range []string{test.want, "details"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not contain %q", err, want)
+				}
+			}
+		})
+	}
+}
+
+func assertGitCall(t *testing.T, gotDir string, gotArgs []string, wantDir string, wantArgs ...string) {
+	t.Helper()
+	if gotDir != wantDir {
+		t.Errorf("git dir = %q, want %q", gotDir, wantDir)
+	}
+	assertGitCalls(t, [][]string{gotArgs}, [][]string{wantArgs})
+}
+
+func assertGitCalls(t *testing.T, got, want [][]string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("git call count = %d, want %d: %#v", len(got), len(want), got)
+	}
+	for index := range want {
+		if strings.Join(got[index], "\x00") != strings.Join(want[index], "\x00") {
+			t.Errorf("git call %d = %#v, want %#v", index, got[index], want[index])
 		}
 	}
 }
