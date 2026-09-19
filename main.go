@@ -27,7 +27,7 @@ type syncCLI struct {
 type gradeCLI struct {
 	AssignmentID  string  `arg:"" name:"id" help:"Assignment ID from the teacher configuration."`
 	ConfigPath    string  `name:"config" type:"path" help:"Override the student configuration file path."`
-	Due           string  `required:"" help:"Grade the last commit at or before this due date."`
+	Due           string  `help:"Grade the last commit at or before this due date."`
 	Branch        string  `help:"Student branch to grade."`
 	Pull          bool    `help:"Pull the student branch before grading."`
 	MirrorPath    *string `name:"mirror-path" type:"path" help:"Override the local teacher mirror path."`
