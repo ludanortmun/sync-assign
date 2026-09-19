@@ -19,7 +19,7 @@ func TestCheckersFor(t *testing.T) {
 			wantNames: []string{"python unit tests", "python extra credit tests", "unmodified test files"},
 		},
 		{
-			archetype: config.ArchetypePythonJupyter,
+			archetype: config.ArchetypeJupyter,
 			wantNames: []string{
 				"python unit tests",
 				"python extra credit tests",
@@ -60,7 +60,7 @@ func TestCheckersForRejectsUnsetAndUnknownArchetypes(t *testing.T) {
 }
 
 func TestJupyterPythonTestsDependOnTestsDirectory(t *testing.T) {
-	archetype := config.ArchetypePythonJupyter
+	archetype := config.ArchetypeJupyter
 	checkers, err := CheckersFor(&archetype)
 	if err != nil {
 		t.Fatalf("CheckersFor() error = %v", err)

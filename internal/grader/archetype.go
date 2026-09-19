@@ -23,7 +23,7 @@ func CheckersFor(archetype *config.Archetype) ([]Checker, error) {
 			CheckIf(NewPythonExtraCreditTestChecker(), hasExtraCreditTests, "assignment has no extra credits"),
 			NewNoFileModifiedChecker(pythonTestPatterns...),
 		}, nil
-	case config.ArchetypePythonJupyter:
+	case config.ArchetypeJupyter:
 		return []Checker{
 			CheckIf(NewPythonUnitTestChecker(), hasPythonUnitTests, "assignment has no unit tests"),
 			CheckIf(NewPythonExtraCreditTestChecker(), hasExtraCreditTests, "assignment has no extra credits"),

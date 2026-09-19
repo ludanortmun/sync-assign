@@ -14,8 +14,8 @@ const (
 	TeacherConfigFilename = "sync-assign.yml"
 	StudentConfigFilename = ".sync-assign.yml"
 
-	ArchetypePython        Archetype = "python"
-	ArchetypePythonJupyter Archetype = "python-jupyter"
+	ArchetypePython  Archetype = "python"
+	ArchetypeJupyter Archetype = "jupyter"
 )
 
 type Archetype string
@@ -58,7 +58,7 @@ func (config TeacherConfig) Validate() error {
 		}
 		if assignment.Archetype != nil {
 			switch *assignment.Archetype {
-			case ArchetypePython, ArchetypePythonJupyter:
+			case ArchetypePython, ArchetypeJupyter:
 			default:
 				return fmt.Errorf("assignment %q: unknown archetype %q", id, *assignment.Archetype)
 			}

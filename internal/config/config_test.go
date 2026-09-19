@@ -47,7 +47,7 @@ func TestLoadTeacherAssignmentMapping(t *testing.T) {
 assignments:
   notebook:
     path: notebook
-    archetype: python-jupyter
+    archetype: jupyter
   script:
     path: script
 `))
@@ -55,8 +55,8 @@ assignments:
 		t.Fatalf("LoadTeacher returned an error: %v", err)
 	}
 	notebook := config.Assignments["notebook"]
-	if notebook.Path != "notebook" || notebook.Archetype == nil || *notebook.Archetype != ArchetypePythonJupyter {
-		t.Fatalf("Assignments[notebook] = %#v, want python-jupyter mapping", notebook)
+	if notebook.Path != "notebook" || notebook.Archetype == nil || *notebook.Archetype != ArchetypeJupyter {
+		t.Fatalf("Assignments[notebook] = %#v, want jupyter mapping", notebook)
 	}
 	if script := config.Assignments["script"]; script.Path != "script" || script.Archetype != nil {
 		t.Fatalf("Assignments[script] = %#v, want path with unset archetype", script)
@@ -206,7 +206,7 @@ func TestWriteAndLoadFiles(t *testing.T) {
 
 	teacher := TeacherConfig{Assignments: map[string]AssignmentSpec{
 		"lab":      {Path: "lab"},
-		"notebook": {Path: "notebook", Archetype: archetypePointer(ArchetypePythonJupyter)},
+		"notebook": {Path: "notebook", Archetype: archetypePointer(ArchetypeJupyter)},
 	}}
 	if err := WriteTeacherFile(teacherFile, teacher); err != nil {
 		t.Fatalf("WriteTeacherFile returned an error: %v", err)
@@ -219,8 +219,8 @@ func TestWriteAndLoadFiles(t *testing.T) {
 		t.Fatal("scalar assignment gained an archetype during roundtrip")
 	}
 	notebook := loadedTeacher.Assignments["notebook"]
-	if notebook.Archetype == nil || *notebook.Archetype != ArchetypePythonJupyter {
-		t.Fatalf("notebook archetype = %v, want python-jupyter", notebook.Archetype)
+	if notebook.Archetype == nil || *notebook.Archetype != ArchetypeJupyter {
+		t.Fatalf("notebook archetype = %v, want jupyter", notebook.Archetype)
 	}
 
 	student := StudentConfig{

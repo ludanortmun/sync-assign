@@ -64,13 +64,13 @@ assignments:
   lab-1: lab-1
   final-project:
     path: project
-    archetype: python-jupyter
+    archetype: jupyter
 ```
 
 Each key is the assignment ID students pass to the CLI. A scalar value is the
 name of one top-level directory and leaves the archetype unset; it can be
 synced, but not graded. A mapping supplies `path` plus an `archetype` of
-`python` or `python-jupyter`. Assignment paths must be single top-level
+`python` or `jupyter`. Assignment paths must be single top-level
 directory names; absolute and nested paths are rejected. The default teacher
 branch is `main`.
 
@@ -230,7 +230,7 @@ Checks run in this order:
 - `python`: main Python tests, extra-credit Python tests, then integrity checks
   for every teacher-supplied file under a `tests` directory and every
   `test_*.py`.
-- `python-jupyter`: main and extra-credit Python tests when a `tests/`
+- `jupyter`: main and extra-credit Python tests when a `tests/`
   directory exists (otherwise both checks are skipped), main and extra-credit
   notebook tests, cleared notebook output/execution counts, an ordered
   teacher-cell subsequence check, then the same test-file integrity check.
