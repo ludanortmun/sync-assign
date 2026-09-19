@@ -113,9 +113,14 @@ func (command *Grade) Run(
 		return fmt.Errorf("grade must run from the student git repository root: %w", err)
 	}
 
-	due, err := parseDueDate(options.DueDate, time.Local)
-	if err != nil {
-		return err
+	var due time.Time
+	if options.DueDate == "" {
+		due = time.Now()
+	} else {
+		due, err = parseDueDate(options.DueDate, time.Local)
+		if err != nil {
+			return err
+		}
 	}
 	branch := options.Branch
 	currentBranch := ""

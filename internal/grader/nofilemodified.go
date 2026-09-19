@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -115,10 +116,8 @@ func protectedFileIssues(environment Environment) []string {
 
 func isProtectedFile(relativePath string) bool {
 	segments := strings.Split(relativePath, "/")
-	for _, segment := range segments[:len(segments)-1] {
-		if segment == "tests" {
-			return true
-		}
+	if slices.Contains(segments[:len(segments)-1], "tests") {
+		return true
 	}
 	matched, err := filepath.Match("test_*.py", segments[len(segments)-1])
 	return err == nil && matched

@@ -148,19 +148,6 @@ func (c *Client) StageAssignment(ctx context.Context, repository, assignmentDir 
 	return err
 }
 
-// Commit creates a local commit from the staged changes.
-func (c *Client) Commit(ctx context.Context, repository, message string) error {
-	if err := require("repository", repository); err != nil {
-		return err
-	}
-	if err := require("commit message", message); err != nil {
-		return err
-	}
-
-	_, err := c.run(ctx, repository, "commit", "--message", message)
-	return err
-}
-
 // CommitAssignment creates a local commit containing only assignmentDir,
 // leaving any unrelated staged changes in the index.
 func (c *Client) CommitAssignment(ctx context.Context, repository, assignmentDir, message string) error {

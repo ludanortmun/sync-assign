@@ -180,24 +180,6 @@ func TestIsDirtyDoesNotReportGitMetadata(t *testing.T) {
 	}
 }
 
-func TestCommit(t *testing.T) {
-	t.Parallel()
-
-	_, repository := createRemote(t)
-	writeFile(t, filepath.Join(repository, "assignment", "answer.txt"), "answer\n")
-
-	client := New()
-	if err := client.StageAssignment(context.Background(), repository, "assignment"); err != nil {
-		t.Fatalf("StageAssignment() error = %v", err)
-	}
-	if err := client.Commit(context.Background(), repository, "sync assignment"); err != nil {
-		t.Fatalf("Commit() error = %v", err)
-	}
-	if got := strings.TrimSpace(runGit(t, repository, "log", "-1", "--pretty=%s")); got != "sync assignment" {
-		t.Fatalf("commit subject = %q, want %q", got, "sync assignment")
-	}
-}
-
 func TestCommitAssignmentExcludesOtherStagedChanges(t *testing.T) {
 	t.Parallel()
 
