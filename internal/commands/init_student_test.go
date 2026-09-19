@@ -69,6 +69,7 @@ func TestInitStudentPromptsForTeacherRepository(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Run returned an error: %v", err)
 	}
+
 	if !strings.Contains(output.String(), "Teacher repository URL:") {
 		t.Fatalf("output %q does not contain prompt", output.String())
 	}
@@ -79,6 +80,34 @@ func TestInitStudentPromptsForTeacherRepository(t *testing.T) {
 	}
 	if studentConfig.TeacherRepository != "https://example.com/prompted.git" {
 		t.Fatalf("TeacherRepository = %q, want prompted value", studentConfig.TeacherRepository)
+	}
+}
+
+func TestInitStudentWritesOverriddenConfigPath(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "alan")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	command := NewInitStudentWithGitRootValidator(nil, io.Discard, acceptingGitRootValidator{})
+
+	if err := command.Run(context.Background(), []string{"https://example.com/course.git"}, InitStudentOptions{
+		RepositoryRoot: root,
+		ConfigPath:     filepath.Join("..", config.StudentConfigFilename),
+	}); err != nil {
+		t.Fatalf("Run returned an error: %v", err)
+	}
+
+	sharedConfig := filepath.Join(parent, config.StudentConfigFilename)
+	studentConfig, err := config.LoadStudentFile(sharedConfig)
+	if err != nil {
+		t.Fatalf("LoadStudentFile(%q) returned an error: %v", sharedConfig, err)
+	}
+	if studentConfig.TeacherRepository != "https://example.com/course.git" {
+		t.Fatalf("TeacherRepository = %q, want shared config value", studentConfig.TeacherRepository)
+	}
+	if _, err := os.Stat(filepath.Join(root, config.StudentConfigFilename)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("default config unexpectedly exists: %v", err)
 	}
 }
 

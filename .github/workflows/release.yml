@@ -46,7 +46,7 @@ jobs:
 
             GOOS="${goos}" GOARCH="${goarch}" \
               go build -trimpath \
-                -ldflags="-s -w -X 'main.VersionTag=${GITHUB_REF_NAME}'" \
+                -ldflags="-s -w -X 'main.version=${GITHUB_REF_NAME}'" \
                 -o "dist/${binary}" .
             tar -C dist -czf "dist/${archive}" "${binary}"
             rm "dist/${binary}"

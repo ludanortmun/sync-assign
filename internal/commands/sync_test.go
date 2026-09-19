@@ -92,7 +92,8 @@ func TestSyncCommitsByDefault(t *testing.T) {
 	writeTestFile(t, filepath.Join(student, "README.md"), "student\n")
 	runGitCommand(t, student, "add", ".")
 	runGitCommand(t, student, "commit", "-m", "Initial student work")
-	if err := config.WriteStudentFile(filepath.Join(student, config.StudentConfigFilename), config.StudentConfig{
+	sharedConfig := filepath.Join(t.TempDir(), config.StudentConfigFilename)
+	if err := config.WriteStudentFile(sharedConfig, config.StudentConfig{
 		TeacherRepository: teacher,
 	}); err != nil {
 		t.Fatal(err)
@@ -100,6 +101,7 @@ func TestSyncCommitsByDefault(t *testing.T) {
 
 	if err := NewSync().Run(context.Background(), "lab-1", SyncOptions{
 		RepositoryRoot: student,
+		ConfigPath:     sharedConfig,
 	}); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}

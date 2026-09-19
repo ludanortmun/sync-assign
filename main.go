@@ -4,16 +4,16 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/alecthomas/kong"
 	"github.com/ludanortmun/sync-assign/internal/commands"
 )
 
-var VersionTag string
+var version = "dev"
 
 type syncCLI struct {
 	AssignmentID string  `arg:"" name:"id" help:"Assignment ID from the teacher configuration."`
+	ConfigPath   string  `name:"config" type:"path" help:"Override the student configuration file path."`
 	Commit       *bool   `help:"Create a local commit after syncing." negatable:""`
 	Clean        *bool   `help:"Replace an existing assignment." negatable:""`
 	Force        bool    `help:"Replace an assignment even when it has uncommitted changes."`
@@ -23,6 +23,56 @@ type syncCLI struct {
 	Message      string  `short:"m" help:"Commit message (default: Sync assignment <id>)."`
 }
 
+type gradeCLI struct {
+	AssignmentID  string  `arg:"" name:"id" help:"Assignment ID from the teacher configuration."`
+	ConfigPath    string  `name:"config" type:"path" help:"Override the student configuration file path."`
+	Due           string  `help:"Grade the last commit at or before this due date."`
+	Branch        string  `help:"Student branch to grade."`
+	Pull          bool    `help:"Pull the student branch before grading."`
+	MirrorPath    *string `name:"mirror-path" type:"path" help:"Override the local teacher mirror path."`
+	Ephemeral     *bool   `help:"Use a temporary teacher mirror and remove it afterward." negatable:""`
+	TeacherBranch *string `name:"teacher-branch" help:"Override the teacher repository branch."`
+}
+
+type checkCLI struct {
+	AssignmentID  string  `arg:"" name:"id" help:"Assignment ID from the teacher configuration."`
+	ConfigPath    string  `name:"config" type:"path" help:"Override the student configuration file path."`
+	MirrorPath    *string `name:"mirror-path" type:"path" help:"Override the local teacher mirror path."`
+	Ephemeral     *bool   `help:"Use a temporary teacher mirror and remove it afterward." negatable:""`
+	TeacherBranch *string `name:"teacher-branch" help:"Override the teacher repository branch."`
+}
+
+func (command *checkCLI) Run(ctx context.Context) error {
+	root, err := commands.CurrentDirectory()
+	if err != nil {
+		return err
+	}
+	return commands.NewCheck(os.Stdout, os.Stderr).Run(ctx, command.AssignmentID, commands.CheckOptions{
+		RepositoryRoot: root,
+		ConfigPath:     command.ConfigPath,
+		MirrorPath:     command.MirrorPath,
+		Ephemeral:      command.Ephemeral,
+		TeacherBranch:  command.TeacherBranch,
+	})
+}
+
+func (command *gradeCLI) Run(ctx context.Context) error {
+	root, err := commands.CurrentDirectory()
+	if err != nil {
+		return err
+	}
+	return commands.NewGrade(os.Stdout, os.Stderr).Run(ctx, command.AssignmentID, commands.GradeOptions{
+		RepositoryRoot: root,
+		ConfigPath:     command.ConfigPath,
+		DueDate:        command.Due,
+		Branch:         command.Branch,
+		Pull:           command.Pull,
+		MirrorPath:     command.MirrorPath,
+		Ephemeral:      command.Ephemeral,
+		TeacherBranch:  command.TeacherBranch,
+	})
+}
+
 func (command *syncCLI) Run(ctx context.Context) error {
 	root, err := commands.CurrentDirectory()
 	if err != nil {
@@ -30,6 +80,7 @@ func (command *syncCLI) Run(ctx context.Context) error {
 	}
 	return commands.NewSync().Run(ctx, command.AssignmentID, commands.SyncOptions{
 		RepositoryRoot: root,
+		ConfigPath:     command.ConfigPath,
 		Commit:         command.Commit,
 		Clean:          command.Clean,
 		Force:          command.Force,
@@ -42,6 +93,7 @@ func (command *syncCLI) Run(ctx context.Context) error {
 
 type initStudentCLI struct {
 	TeacherRepository string  `arg:"" optional:"" name:"teacher-repo" help:"Teacher Git repository URL or path."`
+	ConfigPath        string  `name:"config" type:"path" help:"Override the student configuration file path."`
 	Force             bool    `help:"Overwrite an existing student configuration."`
 	Commit            *bool   `help:"Set the default local commit behavior." negatable:""`
 	Clean             *bool   `help:"Set the default replacement behavior." negatable:""`
@@ -61,6 +113,7 @@ func (command *initStudentCLI) Run(ctx context.Context) error {
 	}
 	return commands.NewInitStudent(os.Stdin, os.Stdout).Run(ctx, args, commands.InitStudentOptions{
 		RepositoryRoot: root,
+		ConfigPath:     command.ConfigPath,
 		Interactive:    stdinIsTerminal(),
 		Force:          command.Force,
 		Commit:         command.Commit,
@@ -74,6 +127,8 @@ func (command *initStudentCLI) Run(ctx context.Context) error {
 type cliModel struct {
 	Version     kong.VersionFlag `help:"Print version information and quit."`
 	Sync        syncCLI          `cmd:"" default:"withargs" hidden:"" help:"Sync an assignment."`
+	Check       checkCLI         `cmd:"" help:"Check the current assignment working directory."`
+	Grade       gradeCLI         `cmd:"" help:"Grade an assignment."`
 	InitStudent initStudentCLI   `cmd:"" name:"init-student" help:"Create a student repository configuration."`
 }
 
@@ -86,7 +141,7 @@ func main() {
 		kong.Help(helpPrinter),
 		kong.ShortHelp(shortHelpPrinter),
 		kong.UsageOnError(),
-		kong.Vars{"version": resolveVersion()},
+		kong.Vars{"version": version},
 		kong.BindTo(context.Background(), (*context.Context)(nil)),
 	)
 	ctx.FatalIfErrorf(ctx.Run())
@@ -99,7 +154,7 @@ func stdinIsTerminal() bool {
 
 func helpPrinter(options kong.HelpOptions, ctx *kong.Context) error {
 	if ctx.Selected() == nil {
-		if _, err := fmt.Fprintln(ctx.Stdout, "Usage: sync-assign <id> [flags]\n       sync-assign init-student [<teacher-repo>] [flags]"); err != nil {
+		if _, err := fmt.Fprintln(ctx.Stdout, "Usage: sync-assign <id> [flags]\n       sync-assign check <id> [flags]\n       sync-assign grade <id> [flags]\n       sync-assign init-student [<teacher-repo>] [flags]"); err != nil {
 			return err
 		}
 		options.NoAppSummary = true
@@ -109,16 +164,8 @@ func helpPrinter(options kong.HelpOptions, ctx *kong.Context) error {
 
 func shortHelpPrinter(options kong.HelpOptions, ctx *kong.Context) error {
 	if ctx.Selected() == nil {
-		_, err := fmt.Fprintln(ctx.Stdout, "Usage: sync-assign <id> [flags]\n       sync-assign init-student [<teacher-repo>] [flags]")
+		_, err := fmt.Fprintln(ctx.Stdout, "Usage: sync-assign <id> [flags]\n       sync-assign check <id> [flags]\n       sync-assign grade <id> [flags]\n       sync-assign init-student [<teacher-repo>] [flags]")
 		return err
 	}
 	return kong.DefaultShortHelpPrinter(options, ctx)
-}
-
-func resolveVersion() string {
-	if VersionTag != "" {
-		return VersionTag
-	}
-
-	return fmt.Sprintf("dev-%s", time.Now().Format("20060102T150405"))
 }

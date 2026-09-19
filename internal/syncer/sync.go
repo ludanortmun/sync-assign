@@ -46,10 +46,11 @@ func Sync(
 		return "", errors.New("assignment ID must not be empty")
 	}
 
-	assignmentDir, found := teacherConfig.Assignments[assignmentID]
+	assignment, found := teacherConfig.Assignments[assignmentID]
 	if !found {
 		return "", fmt.Errorf("assignment %q is not configured", assignmentID)
 	}
+	assignmentDir := assignment.Path
 
 	teacherRoot, err := existingDirectory("teacher repository", teacherRoot)
 	if err != nil {

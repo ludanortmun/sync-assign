@@ -18,6 +18,7 @@ const defaultCommitMessageFormat = "Sync assignment %s"
 // SyncOptions contains command-line overrides for student configuration.
 type SyncOptions struct {
 	RepositoryRoot string
+	ConfigPath     string
 	Commit         *bool
 	Clean          *bool
 	Force          bool
@@ -91,7 +92,11 @@ func (command *Sync) Run(
 		return fmt.Errorf("sync must run from the student git repository root: %w", err)
 	}
 
-	studentConfig, err := config.LoadStudentFile(filepath.Join(root, config.StudentConfigFilename))
+	configPath, err := resolveStudentConfigPath(root, options.ConfigPath)
+	if err != nil {
+		return err
+	}
+	studentConfig, err := config.LoadStudentFile(configPath)
 	if err != nil {
 		return err
 	}
@@ -156,21 +161,35 @@ func applySyncOverrides(studentConfig config.StudentConfig, options SyncOptions)
 	if options.Clean != nil {
 		studentConfig.Clean = options.Clean
 	}
-	if options.MirrorPath != nil {
-		studentConfig.TeacherPath = options.MirrorPath
+	return applyMirrorOverrides(
+		studentConfig,
+		options.MirrorPath,
+		options.Ephemeral,
+		options.Branch,
+	)
+}
+
+func applyMirrorOverrides(
+	studentConfig config.StudentConfig,
+	mirrorPath *string,
+	ephemeral *bool,
+	teacherBranch *string,
+) config.StudentConfig {
+	if mirrorPath != nil {
+		studentConfig.TeacherPath = mirrorPath
 		ephemeral := false
 		studentConfig.Ephemeral = &ephemeral
 		studentConfig.SkipMirror = nil
 	}
-	if options.Ephemeral != nil {
-		studentConfig.Ephemeral = options.Ephemeral
+	if ephemeral != nil {
+		studentConfig.Ephemeral = ephemeral
 		studentConfig.SkipMirror = nil
-		if *options.Ephemeral {
+		if *ephemeral {
 			studentConfig.TeacherPath = nil
 		}
 	}
-	if options.Branch != nil {
-		studentConfig.Branch = options.Branch
+	if teacherBranch != nil {
+		studentConfig.Branch = teacherBranch
 	}
 	return studentConfig
 }

@@ -15,6 +15,8 @@ directories; a student syncs one assignment at a time.
 - Git available on `PATH`
 - Access to the configured teacher repository
 - A student Git repository; commands must run from its root
+- [`uv`](https://docs.astral.sh/uv/) available on `PATH` when checking or
+  grading Python or Jupyter assignments
 
 Release binaries are built for macOS on Apple silicon (`darwin/arm64`) and
 Linux on x86-64 (`linux/amd64`).
@@ -60,12 +62,17 @@ teacher-repository/
 ```yaml
 assignments:
   lab-1: lab-1
-  final-project: project
+  final-project:
+    path: project
+    archetype: jupyter
 ```
 
-Each key is the assignment ID students pass to the CLI. Each value must be the
-name of one top-level directory; absolute and nested paths are rejected. The
-default teacher branch is `main`.
+Each key is the assignment ID students pass to the CLI. A scalar value is the
+name of one top-level directory and leaves the archetype unset; it can be
+synced, but not checked or graded. A mapping supplies `path` plus an `archetype` of
+`python` or `jupyter`. Assignment paths must be single top-level
+directory names; absolute and nested paths are rejected. The default teacher
+branch is `main`.
 
 ## Student setup
 
@@ -77,7 +84,7 @@ sync-assign init-student https://github.com/example/course-assignments.git
 
 If the terminal is interactive, omitting the repository argument prompts for
 it. The command creates `.sync-assign.yml` and refuses to overwrite an existing
-file unless `--force` is supplied.
+file unless `--force` is supplied. Pass `--config=PATH` to create it elsewhere.
 
 ```yaml
 teacher-repository: https://github.com/example/course-assignments.git
@@ -115,6 +122,7 @@ options override `.sync-assign.yml` for that invocation.
 
 | Flag | Behavior |
 | --- | --- |
+| `--config=PATH` | Read the student configuration from another path. Relative paths are resolved from the student repository root. |
 | `--[no-]commit` | Enable or disable the local commit after syncing. |
 | `--[no-]clean` | Enable or disable replacement of an existing assignment. |
 | `--force` | Allow clean mode to replace an assignment that has uncommitted changes. Requires clean mode. |
@@ -142,8 +150,105 @@ sync-assign init-student [<teacher-repo>] [flags]
 ```
 
 `--[no-]commit`, `--[no-]clean`, `--mirror-path`, `--[no-]ephemeral`, and
-`--branch` write the corresponding defaults to `.sync-assign.yml`.
+`--branch` write the corresponding defaults to `.sync-assign.yml`, or the path
+selected by `--config`.
 `--force` overwrites an existing student configuration.
+
+## Check an assignment before committing
+
+```sh
+sync-assign check lab-1
+```
+
+`check` runs the same archetype-specific checker pipeline and produces the same
+live, colored report as `grade`, but evaluates the current working directory
+instead of a historical commit. Modified and untracked files are included, so
+students can validate their work before committing and pushing.
+
+The command must run from the student Git repository root. It does not create a
+commit or modify the working tree.
+
+### Check flags
+
+| Flag | Behavior |
+| --- | --- |
+| `--config=PATH` | Read the student configuration from another path. Relative paths are resolved from the student repository root. |
+| `--mirror-path=PATH` | Override the local teacher mirror path and disable ephemeral mode. |
+| `--[no-]ephemeral` | Enable or disable a temporary teacher clone; enabling it clears a configured mirror path. |
+| `--teacher-branch=BRANCH` | Override the teacher repository branch. |
+| `-h, --help` | Show help. |
+
+## Grade an assignment
+
+```sh
+sync-assign grade lab-1 --due=2026-09-18
+```
+
+Grading selects the latest commit on the requested student branch at or before
+the due date and evaluates it in a detached temporary worktree. The branch
+defaults to the currently checked-out branch. `--due` accepts RFC3339 (including
+its explicit offset) or `YYYY-MM-DD`; a date-only value means the end of that
+day in the machine's local time zone. When omitted, the current time is used.
+
+### Grade flags
+
+| Flag | Behavior |
+| --- | --- |
+| `--due=DATE` | Optional cutoff in RFC3339 or `YYYY-MM-DD` form; defaults to the current time. |
+| `--config=PATH` | Read the student configuration from another path. Relative paths are resolved from the student repository root. |
+| `--branch=BRANCH` | Select the student branch; defaults to the current branch. |
+| `--pull` | Update from `origin` first. The checked-out branch is fetched and fast-forwarded only; another local branch is updated directly by fetch, which refuses non-fast-forward updates. |
+| `--mirror-path=PATH` | Override the local teacher mirror path and disable ephemeral mode. |
+| `--[no-]ephemeral` | Enable or disable a temporary teacher clone; enabling it clears a configured mirror path. |
+| `--teacher-branch=BRANCH` | Override the teacher repository branch. |
+| `-h, --help` | Show help. |
+
+A single teacher-owned configuration can be reused while grading repositories
+stored as sibling directories:
+
+```text
+students/
+|-- .sync-assign.yml
+|-- alan/
+|-- beth/
+|-- carl/
+`-- diego/
+```
+
+Run the grade command from each student's Git repository root and point it at
+the shared file:
+
+```sh
+cd students/alan
+sync-assign grade lab-1 --due=2026-09-18 --config=../.sync-assign.yml
+```
+
+The current teacher mirror is the integrity baseline, even when grading an
+older student commit. Assignments without an archetype are not gradable.
+Checks run in this order:
+
+- `python`: main Python tests, extra-credit Python tests, then integrity checks
+  for every teacher-supplied file under a `tests` directory and every
+  `test_*.py`.
+- `jupyter`: main and extra-credit Python tests when a `tests/`
+  directory exists (otherwise both checks are skipped), main and extra-credit
+  notebook tests, cleared notebook output/execution counts, an ordered
+  teacher-cell subsequence check, then the same test-file integrity check.
+
+Python tests run through `uv run` with `pytest`; notebook tests use
+`pytest --nbmake` with `nbmake`. If the assignment has `requirements.txt`, uv
+also loads it with `--with-requirements`; pytest and nbmake are supplied with
+uv's `--with` options. Files ending in `extra_credit.py` are excluded from the
+main Python test check and run by a separate extra-credit check. Pytest runs in
+quiet mode without tracebacks, and failed checks report only pytest's short test
+summary. Notebooks matching `notebooks/*_extra_credit.ipynb` are likewise
+excluded from the main notebook test check and run by a separate notebook
+extra-credit check.
+
+Each check is printed as soon as it starts and again when it completes.
+Running checks use the default terminal color, successful checks are green,
+skipped checks are yellow, and failed checks are written to standard error in
+red.
 
 ## Teacher mirror behavior
 
