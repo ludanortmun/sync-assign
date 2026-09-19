@@ -154,6 +154,30 @@ sync-assign init-student [<teacher-repo>] [flags]
 selected by `--config`.
 `--force` overwrites an existing student configuration.
 
+## Check an assignment before committing
+
+```sh
+sync-assign check lab-1
+```
+
+`check` runs the same archetype-specific checker pipeline and produces the same
+live, colored report as `grade`, but evaluates the current working directory
+instead of a historical commit. Modified and untracked files are included, so
+students can validate their work before committing and pushing.
+
+The command must run from the student Git repository root. It does not create a
+commit or modify the working tree.
+
+### Check flags
+
+| Flag | Behavior |
+| --- | --- |
+| `--config=PATH` | Read the student configuration from another path. Relative paths are resolved from the student repository root. |
+| `--mirror-path=PATH` | Override the local teacher mirror path and disable ephemeral mode. |
+| `--[no-]ephemeral` | Enable or disable a temporary teacher clone; enabling it clears a configured mirror path. |
+| `--teacher-branch=BRANCH` | Override the teacher repository branch. |
+| `-h, --help` | Show help. |
+
 ## Grade an assignment
 
 ```sh
@@ -164,13 +188,13 @@ Grading selects the latest commit on the requested student branch at or before
 the due date and evaluates it in a detached temporary worktree. The branch
 defaults to the currently checked-out branch. `--due` accepts RFC3339 (including
 its explicit offset) or `YYYY-MM-DD`; a date-only value means the end of that
-day in the machine's local time zone.
+day in the machine's local time zone. When omitted, the current time is used.
 
 ### Grade flags
 
 | Flag | Behavior |
 | --- | --- |
-| `--due=DATE` | Required cutoff in RFC3339 or `YYYY-MM-DD` form. |
+| `--due=DATE` | Optional cutoff in RFC3339 or `YYYY-MM-DD` form; defaults to the current time. |
 | `--config=PATH` | Read the student configuration from another path. Relative paths are resolved from the student repository root. |
 | `--branch=BRANCH` | Select the student branch; defaults to the current branch. |
 | `--pull` | Update from `origin` first. The checked-out branch is fetched and fast-forwarded only; another local branch is updated directly by fetch, which refuses non-fast-forward updates. |

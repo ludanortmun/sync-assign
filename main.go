@@ -34,6 +34,28 @@ type gradeCLI struct {
 	TeacherBranch *string `name:"teacher-branch" help:"Override the teacher repository branch."`
 }
 
+type checkCLI struct {
+	AssignmentID  string  `arg:"" name:"id" help:"Assignment ID from the teacher configuration."`
+	ConfigPath    string  `name:"config" type:"path" help:"Override the student configuration file path."`
+	MirrorPath    *string `name:"mirror-path" type:"path" help:"Override the local teacher mirror path."`
+	Ephemeral     *bool   `help:"Use a temporary teacher mirror and remove it afterward." negatable:""`
+	TeacherBranch *string `name:"teacher-branch" help:"Override the teacher repository branch."`
+}
+
+func (command *checkCLI) Run(ctx context.Context) error {
+	root, err := commands.CurrentDirectory()
+	if err != nil {
+		return err
+	}
+	return commands.NewCheck(os.Stdout, os.Stderr).Run(ctx, command.AssignmentID, commands.CheckOptions{
+		RepositoryRoot: root,
+		ConfigPath:     command.ConfigPath,
+		MirrorPath:     command.MirrorPath,
+		Ephemeral:      command.Ephemeral,
+		TeacherBranch:  command.TeacherBranch,
+	})
+}
+
 func (command *gradeCLI) Run(ctx context.Context) error {
 	root, err := commands.CurrentDirectory()
 	if err != nil {
@@ -105,6 +127,7 @@ func (command *initStudentCLI) Run(ctx context.Context) error {
 type cliModel struct {
 	Version     kong.VersionFlag `help:"Print version information and quit."`
 	Sync        syncCLI          `cmd:"" default:"withargs" hidden:"" help:"Sync an assignment."`
+	Check       checkCLI         `cmd:"" help:"Check the current assignment working directory."`
 	Grade       gradeCLI         `cmd:"" help:"Grade an assignment."`
 	InitStudent initStudentCLI   `cmd:"" name:"init-student" help:"Create a student repository configuration."`
 }
@@ -131,7 +154,7 @@ func stdinIsTerminal() bool {
 
 func helpPrinter(options kong.HelpOptions, ctx *kong.Context) error {
 	if ctx.Selected() == nil {
-		if _, err := fmt.Fprintln(ctx.Stdout, "Usage: sync-assign <id> [flags]\n       sync-assign grade <id> --due=<due> [flags]\n       sync-assign init-student [<teacher-repo>] [flags]"); err != nil {
+		if _, err := fmt.Fprintln(ctx.Stdout, "Usage: sync-assign <id> [flags]\n       sync-assign check <id> [flags]\n       sync-assign grade <id> [flags]\n       sync-assign init-student [<teacher-repo>] [flags]"); err != nil {
 			return err
 		}
 		options.NoAppSummary = true
@@ -141,7 +164,7 @@ func helpPrinter(options kong.HelpOptions, ctx *kong.Context) error {
 
 func shortHelpPrinter(options kong.HelpOptions, ctx *kong.Context) error {
 	if ctx.Selected() == nil {
-		_, err := fmt.Fprintln(ctx.Stdout, "Usage: sync-assign <id> [flags]\n       sync-assign grade <id> --due=<due> [flags]\n       sync-assign init-student [<teacher-repo>] [flags]")
+		_, err := fmt.Fprintln(ctx.Stdout, "Usage: sync-assign <id> [flags]\n       sync-assign check <id> [flags]\n       sync-assign grade <id> [flags]\n       sync-assign init-student [<teacher-repo>] [flags]")
 		return err
 	}
 	return kong.DefaultShortHelpPrinter(options, ctx)

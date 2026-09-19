@@ -282,6 +282,14 @@ func writeGradeReport(
 	); err != nil {
 		return fmt.Errorf("write grade report: %w", err)
 	}
+	return writeCheckResults(output, errorOutput, results)
+}
+
+func writeCheckResults(
+	output io.Writer,
+	errorOutput io.Writer,
+	results <-chan grader.Result,
+) error {
 	report := grader.Report{}
 	passed, failed, skipped := 0, 0, 0
 	for result := range results {
@@ -307,12 +315,12 @@ func writeGradeReport(
 			report.Results = append(report.Results, result)
 		}
 		if _, err := fmt.Fprintf(writer, "  %s[%s] %s%s\n", color, label, result.Checker, reset); err != nil {
-			return fmt.Errorf("write grade report: %w", err)
+			return fmt.Errorf("write check results: %w", err)
 		}
 		if result.Detail != "" {
 			for _, line := range strings.Split(result.Detail, "\n") {
 				if _, err := fmt.Fprintf(writer, "    %s\n", line); err != nil {
-					return fmt.Errorf("write grade report: %w", err)
+					return fmt.Errorf("write check results: %w", err)
 				}
 			}
 		}
@@ -332,7 +340,7 @@ func writeGradeReport(
 		outcomeColor,
 		outcome,
 	); err != nil {
-		return fmt.Errorf("write grade report: %w", err)
+		return fmt.Errorf("write check results: %w", err)
 	}
 	if !report.Passed() {
 		return errors.New("assignment has failed grading checks")

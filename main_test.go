@@ -108,6 +108,49 @@ func TestCLIParsesGradeCommand(t *testing.T) {
 	}
 }
 
+func TestCLIParsesCheckCommand(t *testing.T) {
+	cli := &cliModel{}
+	parser, err := kong.New(cli, kong.Name("sync-assign"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	context, err := parser.Parse([]string{
+		"check",
+		"lab-1",
+		"--config", "../.sync-assign.yml",
+		"--mirror-path", ".teacher-mirror",
+		"--no-ephemeral",
+		"--teacher-branch", "fall",
+	})
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if context.Command() != "check <id>" {
+		t.Fatalf("command = %q, want check command", context.Command())
+	}
+	if cli.Check.AssignmentID != "lab-1" ||
+		!filepath.IsAbs(cli.Check.ConfigPath) ||
+		cli.Check.MirrorPath == nil ||
+		cli.Check.Ephemeral == nil || *cli.Check.Ephemeral ||
+		cli.Check.TeacherBranch == nil || *cli.Check.TeacherBranch != "fall" {
+		t.Fatalf("parsed check command = %#v", cli.Check)
+	}
+}
+
+func TestCLICheckRequiresAssignmentID(t *testing.T) {
+	cli := &cliModel{}
+	parser, err := kong.New(cli, kong.Name("sync-assign"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = parser.Parse([]string{"check"})
+	if err == nil || !strings.Contains(err.Error(), "<id>") {
+		t.Fatalf("Parse() error = %v, want missing assignment ID error", err)
+	}
+}
+
 func TestCLIGradeRequiresAssignmentID(t *testing.T) {
 	cli := &cliModel{}
 	parser, err := kong.New(cli, kong.Name("sync-assign"))
@@ -169,8 +212,10 @@ func TestRootHelpShowsDefaultUsage(t *testing.T) {
 	_, _ = parser.Parse([]string{"--help"})
 	for _, want := range []string{
 		"Usage: sync-assign <id> [flags]",
-		"sync-assign grade <id> --due=<due> [flags]",
+		"sync-assign check <id> [flags]",
+		"sync-assign grade <id> [flags]",
 		"sync-assign init-student [<teacher-repo>] [flags]",
+		"check",
 		"grade",
 	} {
 		if !strings.Contains(output.String(), want) {
@@ -201,7 +246,8 @@ func TestRootShortHelpShowsAllUsages(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Usage: sync-assign <id> [flags]",
-		"sync-assign grade <id> --due=<due> [flags]",
+		"sync-assign check <id> [flags]",
+		"sync-assign grade <id> [flags]",
 		"sync-assign init-student [<teacher-repo>] [flags]",
 	} {
 		if !strings.Contains(output.String(), want) {
