@@ -84,7 +84,7 @@ sync-assign init-student https://github.com/example/course-assignments.git
 
 If the terminal is interactive, omitting the repository argument prompts for
 it. The command creates `.sync-assign.yml` and refuses to overwrite an existing
-file unless `--force` is supplied.
+file unless `--force` is supplied. Pass `--config=PATH` to create it elsewhere.
 
 ```yaml
 teacher-repository: https://github.com/example/course-assignments.git
@@ -122,6 +122,7 @@ options override `.sync-assign.yml` for that invocation.
 
 | Flag | Behavior |
 | --- | --- |
+| `--config=PATH` | Read the student configuration from another path. Relative paths are resolved from the student repository root. |
 | `--[no-]commit` | Enable or disable the local commit after syncing. |
 | `--[no-]clean` | Enable or disable replacement of an existing assignment. |
 | `--force` | Allow clean mode to replace an assignment that has uncommitted changes. Requires clean mode. |
@@ -149,7 +150,8 @@ sync-assign init-student [<teacher-repo>] [flags]
 ```
 
 `--[no-]commit`, `--[no-]clean`, `--mirror-path`, `--[no-]ephemeral`, and
-`--branch` write the corresponding defaults to `.sync-assign.yml`.
+`--branch` write the corresponding defaults to `.sync-assign.yml`, or the path
+selected by `--config`.
 `--force` overwrites an existing student configuration.
 
 ## Grade an assignment
@@ -169,12 +171,33 @@ day in the machine's local time zone.
 | Flag | Behavior |
 | --- | --- |
 | `--due=DATE` | Required cutoff in RFC3339 or `YYYY-MM-DD` form. |
+| `--config=PATH` | Read the student configuration from another path. Relative paths are resolved from the student repository root. |
 | `--branch=BRANCH` | Select the student branch; defaults to the current branch. |
 | `--pull` | Update from `origin` first. The checked-out branch is fetched and fast-forwarded only; another local branch is updated directly by fetch, which refuses non-fast-forward updates. |
 | `--mirror-path=PATH` | Override the local teacher mirror path and disable ephemeral mode. |
 | `--[no-]ephemeral` | Enable or disable a temporary teacher clone; enabling it clears a configured mirror path. |
 | `--teacher-branch=BRANCH` | Override the teacher repository branch. |
 | `-h, --help` | Show help. |
+
+A single teacher-owned configuration can be reused while grading repositories
+stored as sibling directories:
+
+```text
+students/
+|-- .sync-assign.yml
+|-- alan/
+|-- beth/
+|-- carl/
+`-- diego/
+```
+
+Run the grade command from each student's Git repository root and point it at
+the shared file:
+
+```sh
+cd students/alan
+sync-assign grade lab-1 --due=2026-09-18 --config=../.sync-assign.yml
+```
 
 The current teacher mirror is the integrity baseline, even when grading an
 older student commit. Assignments without an archetype are not gradable.

@@ -14,6 +14,7 @@ var VersionTag string
 
 type syncCLI struct {
 	AssignmentID string  `arg:"" name:"id" help:"Assignment ID from the teacher configuration."`
+	ConfigPath   string  `name:"config" type:"path" help:"Override the student configuration file path."`
 	Commit       *bool   `help:"Create a local commit after syncing." negatable:""`
 	Clean        *bool   `help:"Replace an existing assignment." negatable:""`
 	Force        bool    `help:"Replace an assignment even when it has uncommitted changes."`
@@ -25,6 +26,7 @@ type syncCLI struct {
 
 type gradeCLI struct {
 	AssignmentID  string  `arg:"" name:"id" help:"Assignment ID from the teacher configuration."`
+	ConfigPath    string  `name:"config" type:"path" help:"Override the student configuration file path."`
 	Due           string  `required:"" help:"Grade the last commit at or before this due date."`
 	Branch        string  `help:"Student branch to grade."`
 	Pull          bool    `help:"Pull the student branch before grading."`
@@ -40,6 +42,7 @@ func (command *gradeCLI) Run(ctx context.Context) error {
 	}
 	return commands.NewGrade(os.Stdout).Run(ctx, command.AssignmentID, commands.GradeOptions{
 		RepositoryRoot: root,
+		ConfigPath:     command.ConfigPath,
 		DueDate:        command.Due,
 		Branch:         command.Branch,
 		Pull:           command.Pull,
@@ -56,6 +59,7 @@ func (command *syncCLI) Run(ctx context.Context) error {
 	}
 	return commands.NewSync().Run(ctx, command.AssignmentID, commands.SyncOptions{
 		RepositoryRoot: root,
+		ConfigPath:     command.ConfigPath,
 		Commit:         command.Commit,
 		Clean:          command.Clean,
 		Force:          command.Force,
@@ -68,6 +72,7 @@ func (command *syncCLI) Run(ctx context.Context) error {
 
 type initStudentCLI struct {
 	TeacherRepository string  `arg:"" optional:"" name:"teacher-repo" help:"Teacher Git repository URL or path."`
+	ConfigPath        string  `name:"config" type:"path" help:"Override the student configuration file path."`
 	Force             bool    `help:"Overwrite an existing student configuration."`
 	Commit            *bool   `help:"Set the default local commit behavior." negatable:""`
 	Clean             *bool   `help:"Set the default replacement behavior." negatable:""`
@@ -87,6 +92,7 @@ func (command *initStudentCLI) Run(ctx context.Context) error {
 	}
 	return commands.NewInitStudent(os.Stdin, os.Stdout).Run(ctx, args, commands.InitStudentOptions{
 		RepositoryRoot: root,
+		ConfigPath:     command.ConfigPath,
 		Interactive:    stdinIsTerminal(),
 		Force:          command.Force,
 		Commit:         command.Commit,

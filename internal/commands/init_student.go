@@ -18,6 +18,7 @@ import (
 // Pointer fields preserve whether an optional default was explicitly provided.
 type InitStudentOptions struct {
 	RepositoryRoot string
+	ConfigPath     string
 	Interactive    bool
 	Force          bool
 	Commit         *bool
@@ -114,7 +115,10 @@ func (command *InitStudent) Run(
 		return fmt.Errorf("validate student config: %w", err)
 	}
 
-	filename := filepath.Join(root, config.StudentConfigFilename)
+	filename, err := resolveStudentConfigPath(root, options.ConfigPath)
+	if err != nil {
+		return err
+	}
 	if !options.Force {
 		_, err := os.Stat(filename)
 		switch {

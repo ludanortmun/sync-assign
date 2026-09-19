@@ -18,6 +18,10 @@ import (
 func TestGradeSelectsLatestCommitAtOrBeforeDueAndCleansWorktree(t *testing.T) {
 	teacher := newGradeTeacher(t, "python")
 	student := newGradeStudent(t, teacher)
+	sharedConfig := filepath.Join(t.TempDir(), config.StudentConfigFilename)
+	if err := os.Rename(filepath.Join(student, config.StudentConfigFilename), sharedConfig); err != nil {
+		t.Fatal(err)
+	}
 	before := commitGradeFileAt(t, student, "lab/answer.txt", "on time\n", "2026-01-10T10:00:00Z")
 	after := commitGradeFileAt(t, student, "lab/answer.txt", "late\n", "2026-01-12T10:00:00Z")
 
@@ -29,6 +33,7 @@ func TestGradeSelectsLatestCommitAtOrBeforeDueAndCleansWorktree(t *testing.T) {
 	})
 	if err := command.Run(context.Background(), "lab", GradeOptions{
 		RepositoryRoot: student,
+		ConfigPath:     sharedConfig,
 		DueDate:        "2026-01-11T23:59:59Z",
 	}); err != nil {
 		t.Fatalf("grade: %v", err)

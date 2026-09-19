@@ -27,7 +27,7 @@ func TestCLIParsesDefaultSyncCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	context, err := parser.Parse([]string{"lab-1", "--no-commit", "--clean", "--branch", "fall"})
+	context, err := parser.Parse([]string{"lab-1", "--config", "../.sync-assign.yml", "--no-commit", "--clean", "--branch", "fall"})
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
@@ -35,7 +35,8 @@ func TestCLIParsesDefaultSyncCommand(t *testing.T) {
 		t.Fatalf("command = %q, want default sync command", context.Command())
 	}
 	if cli.Sync.AssignmentID != "lab-1" || cli.Sync.Commit == nil || *cli.Sync.Commit ||
-		cli.Sync.Clean == nil || !*cli.Sync.Clean || *cli.Sync.Branch != "fall" {
+		cli.Sync.Clean == nil || !*cli.Sync.Clean || *cli.Sync.Branch != "fall" ||
+		!filepath.IsAbs(cli.Sync.ConfigPath) {
 		t.Fatalf("parsed sync command = %#v", cli.Sync)
 	}
 }
@@ -78,6 +79,7 @@ func TestCLIParsesGradeCommand(t *testing.T) {
 		"grade",
 		"lab-1",
 		"--due", "2026-09-18T23:59:00-07:00",
+		"--config", "../.sync-assign.yml",
 		"--branch", "student-work",
 		"--pull",
 		"--mirror-path", ".teacher-mirror",
@@ -96,6 +98,7 @@ func TestCLIParsesGradeCommand(t *testing.T) {
 	}
 	if cli.Grade.AssignmentID != "lab-1" ||
 		cli.Grade.Due != "2026-09-18T23:59:00-07:00" ||
+		!filepath.IsAbs(cli.Grade.ConfigPath) ||
 		cli.Grade.Branch != "student-work" ||
 		!cli.Grade.Pull ||
 		cli.Grade.MirrorPath == nil || *cli.Grade.MirrorPath != mirrorPath ||

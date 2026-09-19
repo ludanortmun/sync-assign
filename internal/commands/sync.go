@@ -18,6 +18,7 @@ const defaultCommitMessageFormat = "Sync assignment %s"
 // SyncOptions contains command-line overrides for student configuration.
 type SyncOptions struct {
 	RepositoryRoot string
+	ConfigPath     string
 	Commit         *bool
 	Clean          *bool
 	Force          bool
@@ -91,7 +92,11 @@ func (command *Sync) Run(
 		return fmt.Errorf("sync must run from the student git repository root: %w", err)
 	}
 
-	studentConfig, err := config.LoadStudentFile(filepath.Join(root, config.StudentConfigFilename))
+	configPath, err := resolveStudentConfigPath(root, options.ConfigPath)
+	if err != nil {
+		return err
+	}
+	studentConfig, err := config.LoadStudentFile(configPath)
 	if err != nil {
 		return err
 	}

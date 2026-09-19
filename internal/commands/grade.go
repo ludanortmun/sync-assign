@@ -19,6 +19,7 @@ import (
 // GradeOptions contains command-line inputs and student configuration overrides.
 type GradeOptions struct {
 	RepositoryRoot string
+	ConfigPath     string
 	DueDate        string
 	Branch         string
 	Pull           bool
@@ -139,7 +140,11 @@ func (command *Grade) Run(
 		}
 	}
 
-	studentConfig, err := config.LoadStudentFile(filepath.Join(root, config.StudentConfigFilename))
+	configPath, err := resolveStudentConfigPath(root, options.ConfigPath)
+	if err != nil {
+		return err
+	}
+	studentConfig, err := config.LoadStudentFile(configPath)
 	if err != nil {
 		return err
 	}
