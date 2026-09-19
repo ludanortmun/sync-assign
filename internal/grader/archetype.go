@@ -20,11 +20,13 @@ func CheckersFor(archetype *config.Archetype) ([]Checker, error) {
 	case config.ArchetypePython:
 		return []Checker{
 			NewPythonUnitTestChecker(),
+			NewPythonExtraCreditTestChecker(),
 			NewNoFileModifiedChecker(pythonTestPatterns...),
 		}, nil
 	case config.ArchetypePythonJupyter:
 		return []Checker{
 			CheckIf(NewPythonUnitTestChecker(), hasPythonUnitTests),
+			CheckIf(NewPythonExtraCreditTestChecker(), hasPythonUnitTests),
 			NewNotebookUnitTestChecker(),
 			NewClearedOutputChecker(),
 			NewUnchangedCellsChecker(),

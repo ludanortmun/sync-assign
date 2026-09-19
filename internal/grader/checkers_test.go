@@ -20,13 +20,20 @@ func TestPythonUnitTestCheckerUVArguments(t *testing.T) {
 		{
 			name:     "root test without requirements",
 			testPath: "test_root.py",
-			wantArgs: []string{"run", "--with", "pytest", "--", "pytest"},
+			wantArgs: []string{
+				"run", "--with", "pytest", "--", "pytest", "-q", "--tb=no",
+				"--ignore-glob=*extra_credit.py",
+			},
 		},
 		{
 			name:             "nested test with requirements",
 			withRequirements: true,
 			testPath:         filepath.Join("nested", "test_nested.py"),
-			wantArgs:         []string{"run", "--with-requirements", "requirements.txt", "--with", "pytest", "--", "pytest"},
+			wantArgs: []string{
+				"run", "--with-requirements", "requirements.txt",
+				"--with", "pytest", "--", "pytest", "-q", "--tb=no",
+				"--ignore-glob=*extra_credit.py",
+			},
 		},
 	}
 	for _, test := range tests {
@@ -72,7 +79,11 @@ func TestNotebookUnitTestCheckerUVArguments(t *testing.T) {
 	}
 	result := newNotebookUnitTestChecker(executor).Check(Environment{StudentDir: studentDir})
 
-	want := []string{"run", "--with-requirements", "requirements.txt", "--with", "pytest", "--with", "nbmake", "--", "pytest", "--nbmake"}
+	want := []string{
+		"run", "--with-requirements", "requirements.txt",
+		"--with", "pytest", "--with", "nbmake", "--",
+		"pytest", "-q", "--tb=no", "--nbmake",
+	}
 	if result.Status != Passed || !reflect.DeepEqual(gotArgs, want) {
 		t.Fatalf("result = %#v, args = %#v, want passed and %#v", result, gotArgs, want)
 	}
@@ -84,10 +95,9 @@ func TestUnitTestCheckerReportsCommandFailures(t *testing.T) {
 	}
 	result := newPythonUnitTestChecker(executor).Check(Environment{StudentDir: t.TempDir()})
 	if result.Status != Failed ||
-		!strings.Contains(result.Detail, "partial output") ||
 		!strings.Contains(result.Detail, "test failed") ||
 		!strings.Contains(result.Detail, "exit status 1") {
-		t.Fatalf("failure result = %#v, want captured stdout, stderr, and error", result)
+		t.Fatalf("failure result = %#v, want concise command output and error", result)
 	}
 
 	missingUV := func(string, string, ...string) ([]byte, []byte, error) {
@@ -101,13 +111,56 @@ func TestUnitTestCheckerReportsCommandFailures(t *testing.T) {
 
 func TestUnitTestCheckerFormatsFailureOutput(t *testing.T) {
 	executor := func(string, string, ...string) ([]byte, []byte, error) {
-		return []byte("  collected one test \n"), []byte("\n assertion failed  "), errors.New("exit status 1")
+		return []byte(`============================= test session starts ==============================
+tests/test_answer.py F
+=========================== short test summary info ============================
+FAILED tests/test_answer.py::test_answer - assert 1 == 2
+============================== 1 failed in 0.02s ===============================`), []byte("uv diagnostic that should be hidden"), errors.New("exit status 1")
 	}
 	result := newNotebookUnitTestChecker(executor).Check(Environment{StudentDir: t.TempDir()})
 
-	want := "uv run failed: exit status 1\nstdout:\ncollected one test\nstderr:\nassertion failed"
+	want := `uv run failed: exit status 1
+=========================== short test summary info ============================
+FAILED tests/test_answer.py::test_answer - assert 1 == 2
+============================== 1 failed in 0.02s ===============================`
 	if result.Status != Failed || result.Detail != want {
 		t.Fatalf("result = %#v, want failure detail %q", result, want)
+	}
+}
+
+func TestPythonExtraCreditTestCheckerRunsOnlyExtraCreditFiles(t *testing.T) {
+	studentDir := t.TempDir()
+	writeFile(t, filepath.Join(studentDir, "tests", "test_main.py"), "")
+	writeFile(t, filepath.Join(studentDir, "tests", "test_bonus_extra_credit.py"), "")
+	writeFile(t, filepath.Join(studentDir, "nested", "another_extra_credit.py"), "")
+	writeFile(t, filepath.Join(studentDir, ".venv", "ignored_extra_credit.py"), "")
+
+	var gotArgs []string
+	executor := func(_, _ string, args ...string) ([]byte, []byte, error) {
+		gotArgs = append([]string(nil), args...)
+		return nil, nil, nil
+	}
+	result := newPythonExtraCreditTestChecker(executor).Check(Environment{StudentDir: studentDir})
+
+	want := []string{
+		"run", "--with", "pytest", "--", "pytest", "-q", "--tb=no",
+		"nested/another_extra_credit.py", "tests/test_bonus_extra_credit.py",
+	}
+	if result.Status != Passed || !reflect.DeepEqual(gotArgs, want) {
+		t.Fatalf("result = %#v, args = %#v, want passed and %#v", result, gotArgs, want)
+	}
+}
+
+func TestPythonExtraCreditTestCheckerSkipsWhenNoFilesExist(t *testing.T) {
+	called := false
+	executor := func(_, _ string, _ ...string) ([]byte, []byte, error) {
+		called = true
+		return nil, nil, nil
+	}
+	result := newPythonExtraCreditTestChecker(executor).Check(Environment{StudentDir: t.TempDir()})
+
+	if result.Status != Skipped || called {
+		t.Fatalf("result = %#v, executor called = %t; want skipped without execution", result, called)
 	}
 }
 

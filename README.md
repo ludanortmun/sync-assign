@@ -203,17 +203,21 @@ The current teacher mirror is the integrity baseline, even when grading an
 older student commit. Assignments without an archetype are not gradable.
 Checks run in this order:
 
-- `python`: Python tests in `tests/`, then integrity checks for every
-  teacher-supplied file under a `tests` directory and every `test_*.py`.
-- `python-jupyter`: Python tests when a `tests/` directory exists (otherwise
-  that check is skipped), notebook tests, cleared notebook output/execution
-  counts, an ordered teacher-cell subsequence check, then the same test-file
-  integrity check.
+- `python`: main Python tests, extra-credit Python tests, then integrity checks
+  for every teacher-supplied file under a `tests` directory and every
+  `test_*.py`.
+- `python-jupyter`: main and extra-credit Python tests when a `tests/`
+  directory exists (otherwise both checks are skipped), notebook tests,
+  cleared notebook output/execution counts, an ordered teacher-cell subsequence
+  check, then the same test-file integrity check.
 
 Python tests run through `uv run` with `pytest`; notebook tests use
 `pytest --nbmake` with `nbmake`. If the assignment has `requirements.txt`, uv
 also loads it with `--with-requirements`; pytest and nbmake are supplied with
-uv's `--with` options.
+uv's `--with` options. Files ending in `extra_credit.py` are excluded from the
+main Python test check and run by a separate extra-credit check. Pytest runs in
+quiet mode without tracebacks, and failed checks report only pytest's short test
+summary.
 
 ## Teacher mirror behavior
 

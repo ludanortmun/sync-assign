@@ -16,12 +16,13 @@ func TestCheckersFor(t *testing.T) {
 	}{
 		{
 			archetype: config.ArchetypePython,
-			wantNames: []string{"python unit tests", "unmodified test files"},
+			wantNames: []string{"python unit tests", "python extra credit tests", "unmodified test files"},
 		},
 		{
 			archetype: config.ArchetypePythonJupyter,
 			wantNames: []string{
 				"python unit tests",
+				"python extra credit tests",
 				"notebook unit tests",
 				"cleared notebook output",
 				"unchanged notebook cells",

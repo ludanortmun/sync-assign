@@ -36,7 +36,39 @@ func newPythonUnitTestChecker(executor commandExecutor) Checker {
 	return Checker{
 		Name: name,
 		Check: func(environment Environment) Result {
-			args, err := uvArgs(environment.StudentDir, "--with", "pytest", "--", "pytest")
+			args, err := uvArgs(
+				environment.StudentDir,
+				"--with", "pytest", "--", "pytest", "-q", "--tb=no",
+				"--ignore-glob=*extra_credit.py",
+			)
+			if err != nil {
+				return failedResult(name, err.Error())
+			}
+			return runUV(name, environment.StudentDir, args, executor)
+		},
+	}
+}
+
+// NewPythonExtraCreditTestChecker checks extra-credit Python tests separately.
+func NewPythonExtraCreditTestChecker() Checker {
+	return newPythonExtraCreditTestChecker(executeCommand)
+}
+
+func newPythonExtraCreditTestChecker(executor commandExecutor) Checker {
+	const name = "python extra credit tests"
+	return Checker{
+		Name: name,
+		Check: func(environment Environment) Result {
+			paths, err := extraCreditTestPaths(environment.StudentDir)
+			if err != nil {
+				return failedResult(name, fmt.Sprintf("find extra-credit tests: %v", err))
+			}
+			if len(paths) == 0 {
+				return Result{Checker: name, Status: Skipped, Detail: "no extra-credit tests found"}
+			}
+			args := []string{"--with", "pytest", "--", "pytest", "-q", "--tb=no"}
+			args = append(args, paths...)
+			args, err = uvArgs(environment.StudentDir, args...)
 			if err != nil {
 				return failedResult(name, err.Error())
 			}
@@ -55,7 +87,11 @@ func newNotebookUnitTestChecker(executor commandExecutor) Checker {
 	return Checker{
 		Name: name,
 		Check: func(environment Environment) Result {
-			args, err := uvArgs(environment.StudentDir, "--with", "pytest", "--with", "nbmake", "--", "pytest", "--nbmake")
+			args, err := uvArgs(
+				environment.StudentDir,
+				"--with", "pytest", "--with", "nbmake", "--",
+				"pytest", "-q", "--tb=no", "--nbmake",
+			)
 			if err != nil {
 				return failedResult(name, err.Error())
 			}
@@ -90,21 +126,60 @@ func runUV(name, dir string, args []string, executor commandExecutor) Result {
 	}
 
 	detail := fmt.Sprintf("uv run failed: %v", err)
-	if output := formatCommandOutput(stdout, stderr); output != "" {
+	if output := formatPytestSummary(stdout, stderr); output != "" {
 		detail += "\n" + output
 	}
 	return failedResult(name, detail)
 }
 
-func formatCommandOutput(stdout, stderr []byte) string {
-	var sections []string
-	if output := strings.TrimSpace(string(stdout)); output != "" {
-		sections = append(sections, "stdout:\n"+output)
+func formatPytestSummary(stdout, stderr []byte) string {
+	for _, raw := range []string{string(stdout), string(stderr)} {
+		output := strings.TrimSpace(raw)
+		if index := strings.Index(output, "short test summary info"); index >= 0 {
+			lineStart := strings.LastIndex(output[:index], "\n")
+			if lineStart < 0 {
+				lineStart = 0
+			} else {
+				lineStart++
+			}
+			return output[lineStart:]
+		}
 	}
-	if output := strings.TrimSpace(string(stderr)); output != "" {
-		sections = append(sections, "stderr:\n"+output)
+	output := strings.TrimSpace(strings.Join([]string{string(stdout), string(stderr)}, "\n"))
+	if output == "" {
+		return ""
 	}
-	return strings.Join(sections, "\n")
+	lines := strings.Split(output, "\n")
+	return strings.TrimSpace(lines[len(lines)-1])
+}
+
+func extraCreditTestPaths(studentDir string) ([]string, error) {
+	var paths []string
+	err := filepath.WalkDir(studentDir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			switch entry.Name() {
+			case ".git", ".venv", "__pycache__", ".ipynb_checkpoints":
+				if path != studentDir {
+					return filepath.SkipDir
+				}
+			}
+			return nil
+		}
+		if !entry.Type().IsRegular() || !strings.HasSuffix(entry.Name(), "extra_credit.py") {
+			return nil
+		}
+		relative, err := filepath.Rel(studentDir, path)
+		if err != nil {
+			return err
+		}
+		paths = append(paths, filepath.ToSlash(relative))
+		return nil
+	})
+	sort.Strings(paths)
+	return paths, err
 }
 
 // NewClearedOutputChecker ensures submitted notebooks have no saved output or execution count.
