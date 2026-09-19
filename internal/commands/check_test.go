@@ -29,12 +29,8 @@ func TestCheckUsesCurrentWorkingDirectoryIncludingUncommittedChanges(t *testing.
 			return []grader.Checker{{
 				Name: "injected checker",
 				Check: func(environment grader.Environment) grader.Result {
-					if environment.StudentDir == filepath.Join(student, "lab") {
-						t.Fatal("checker received the live assignment directory")
-					}
 					checkedAnswer = readWorkflowFile(t, filepath.Join(environment.StudentDir, "answer.txt"))
 					checkedNewFile = readWorkflowFile(t, filepath.Join(environment.StudentDir, "new.txt"))
-					writeWorkflowFile(t, filepath.Join(environment.StudentDir, "answer.txt"), "modified snapshot\n")
 					return grader.Result{Status: grader.Passed}
 				},
 			}}, nil
@@ -49,9 +45,6 @@ func TestCheckUsesCurrentWorkingDirectoryIncludingUncommittedChanges(t *testing.
 
 	if checkedAnswer != "uncommitted\n" || checkedNewFile != "untracked\n" {
 		t.Fatalf("checked files = (%q, %q), want current working tree", checkedAnswer, checkedNewFile)
-	}
-	if got := readWorkflowFile(t, filepath.Join(student, "lab", "answer.txt")); got != "uncommitted\n" {
-		t.Fatalf("live assignment was modified to %q", got)
 	}
 	for _, want := range []string{
 		"check: lab\n",

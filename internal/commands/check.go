@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -140,31 +139,9 @@ func (command *Check) Run(
 		return fmt.Errorf("configure checkers for assignment %q: %w", assignmentID, err)
 	}
 
-	snapshotRoot, err := os.MkdirTemp(filepath.Dir(root), ".sync-assign-check-*")
-	if err != nil {
-		return fmt.Errorf("create check snapshot directory: %w", err)
-	}
-	defer func() {
-		if cleanupErr := os.RemoveAll(snapshotRoot); cleanupErr != nil {
-			err = errors.Join(err, fmt.Errorf("remove check snapshot directory %q: %w", snapshotRoot, cleanupErr))
-		}
-	}()
-	snapshot := filepath.Join(snapshotRoot, "assignment")
-	if err := os.Mkdir(snapshot, 0o755); err != nil {
-		return fmt.Errorf("create assignment snapshot: %w", err)
-	}
-	source := filepath.Join(root, spec.Path)
-	if _, statErr := os.Stat(source); statErr == nil {
-		if err := os.CopyFS(snapshot, os.DirFS(source)); err != nil {
-			return fmt.Errorf("snapshot assignment for checking: %w", err)
-		}
-	} else if !errors.Is(statErr, os.ErrNotExist) {
-		return fmt.Errorf("inspect assignment for checking: %w", statErr)
-	}
-
 	results := make(chan grader.Result)
 	go grader.Run(grader.Environment{
-		StudentDir: snapshot,
+		StudentDir: filepath.Join(root, spec.Path),
 		TeacherDir: filepath.Join(teacherMirror.Path(), spec.Path),
 	}, checkers, results)
 	return writeCheckReport(command.output, command.errorOutput, assignmentID, results)
