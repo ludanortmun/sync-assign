@@ -92,7 +92,8 @@ func newNotebookUnitTestChecker(executor commandExecutor) Checker {
 			args, err := uvArgs(
 				environment.StudentDir,
 				"--with", "pytest", "--with", "nbmake", "--",
-				"pytest", "-q", "--tb=no", "--nbmake", "notebooks",
+				"pytest", "-q", "--tb=no", "--nbmake",
+				"--ignore-glob=notebooks/*_extra_credit.ipynb", "notebooks",
 			)
 			if err != nil {
 				return failedResult(name, err.Error())
@@ -100,6 +101,62 @@ func newNotebookUnitTestChecker(executor commandExecutor) Checker {
 			return runUV(name, environment.StudentDir, args, executor)
 		},
 	}
+}
+
+// NewNotebookExtraCreditTestChecker checks extra-credit notebooks separately.
+// Extra-credit notebooks are expected at "notebooks/*_extra_credit.ipynb".
+func NewNotebookExtraCreditTestChecker() Checker {
+	return newNotebookExtraCreditTestChecker(executeCommand)
+}
+
+func newNotebookExtraCreditTestChecker(executor commandExecutor) Checker {
+	const name = "notebook extra credit tests"
+	return Checker{
+		Name: name,
+		Check: func(environment Environment) Result {
+			paths, err := extraCreditNotebookPaths(environment.StudentDir)
+			if err != nil {
+				return failedResult(name, fmt.Sprintf("find extra-credit notebooks: %v", err))
+			}
+			if len(paths) == 0 {
+				return Result{Checker: name, Status: Skipped, Detail: "no extra-credit notebooks found"}
+			}
+			args := []string{
+				"--with", "pytest", "--with", "nbmake", "--",
+				"pytest", "-q", "--tb=no", "--nbmake",
+			}
+			args = append(args, paths...)
+			args, err = uvArgs(environment.StudentDir, args...)
+			if err != nil {
+				return failedResult(name, err.Error())
+			}
+			return runUV(name, environment.StudentDir, args, executor)
+		},
+	}
+}
+
+func extraCreditNotebookPaths(studentDir string) ([]string, error) {
+	matches, err := filepath.Glob(filepath.Join(studentDir, "notebooks", "*_extra_credit.ipynb"))
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, 0, len(matches))
+	for _, match := range matches {
+		info, err := os.Stat(match)
+		if err != nil {
+			return nil, err
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		relative, err := filepath.Rel(studentDir, match)
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, filepath.ToSlash(relative))
+	}
+	sort.Strings(paths)
+	return paths, nil
 }
 
 func uvArgs(studentDir string, args ...string) ([]string, error) {

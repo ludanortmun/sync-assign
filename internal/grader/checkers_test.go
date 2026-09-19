@@ -82,10 +82,49 @@ func TestNotebookUnitTestCheckerUVArguments(t *testing.T) {
 	want := []string{
 		"run", "--with-requirements", "requirements.txt",
 		"--with", "pytest", "--with", "nbmake", "--",
-		"pytest", "-q", "--tb=no", "--nbmake", "notebooks",
+		"pytest", "-q", "--tb=no", "--nbmake",
+		"--ignore-glob=notebooks/*_extra_credit.ipynb", "notebooks",
 	}
 	if result.Status != Passed || !reflect.DeepEqual(gotArgs, want) {
 		t.Fatalf("result = %#v, args = %#v, want passed and %#v", result, gotArgs, want)
+	}
+}
+
+func TestNotebookExtraCreditTestCheckerRunsOnlyMatchingNotebooks(t *testing.T) {
+	studentDir := t.TempDir()
+	writeNotebook(t, filepath.Join(studentDir, "notebooks", "main.ipynb"), nil)
+	writeNotebook(t, filepath.Join(studentDir, "notebooks", "bonus_extra_credit.ipynb"), nil)
+	writeNotebook(t, filepath.Join(studentDir, "notebooks", "second_extra_credit.ipynb"), nil)
+	writeNotebook(t, filepath.Join(studentDir, "notebooks", "nested", "ignored_extra_credit.ipynb"), nil)
+	writeNotebook(t, filepath.Join(studentDir, "outside_extra_credit.ipynb"), nil)
+
+	var gotArgs []string
+	executor := func(_, _ string, args ...string) ([]byte, []byte, error) {
+		gotArgs = append([]string(nil), args...)
+		return nil, nil, nil
+	}
+	result := newNotebookExtraCreditTestChecker(executor).Check(Environment{StudentDir: studentDir})
+
+	want := []string{
+		"run", "--with", "pytest", "--with", "nbmake", "--",
+		"pytest", "-q", "--tb=no", "--nbmake",
+		"notebooks/bonus_extra_credit.ipynb", "notebooks/second_extra_credit.ipynb",
+	}
+	if result.Status != Passed || !reflect.DeepEqual(gotArgs, want) {
+		t.Fatalf("result = %#v, args = %#v, want passed and %#v", result, gotArgs, want)
+	}
+}
+
+func TestNotebookExtraCreditTestCheckerSkipsWhenNoFilesExist(t *testing.T) {
+	called := false
+	executor := func(_, _ string, _ ...string) ([]byte, []byte, error) {
+		called = true
+		return nil, nil, nil
+	}
+	result := newNotebookExtraCreditTestChecker(executor).Check(Environment{StudentDir: t.TempDir()})
+
+	if result.Status != Skipped || called {
+		t.Fatalf("result = %#v, executor called = %t; want skipped without execution", result, called)
 	}
 }
 

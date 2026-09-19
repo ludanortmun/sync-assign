@@ -231,9 +231,9 @@ Checks run in this order:
   for every teacher-supplied file under a `tests` directory and every
   `test_*.py`.
 - `python-jupyter`: main and extra-credit Python tests when a `tests/`
-  directory exists (otherwise both checks are skipped), notebook tests,
-  cleared notebook output/execution counts, an ordered teacher-cell subsequence
-  check, then the same test-file integrity check.
+  directory exists (otherwise both checks are skipped), main and extra-credit
+  notebook tests, cleared notebook output/execution counts, an ordered
+  teacher-cell subsequence check, then the same test-file integrity check.
 
 Python tests run through `uv run` with `pytest`; notebook tests use
 `pytest --nbmake` with `nbmake`. If the assignment has `requirements.txt`, uv
@@ -241,7 +241,9 @@ also loads it with `--with-requirements`; pytest and nbmake are supplied with
 uv's `--with` options. Files ending in `extra_credit.py` are excluded from the
 main Python test check and run by a separate extra-credit check. Pytest runs in
 quiet mode without tracebacks, and failed checks report only pytest's short test
-summary.
+summary. Notebooks matching `notebooks/*_extra_credit.ipynb` are likewise
+excluded from the main notebook test check and run by a separate notebook
+extra-credit check.
 
 Each check is printed as soon as it starts and again when it completes.
 Running checks use the default terminal color, successful checks are green,

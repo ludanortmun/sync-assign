@@ -24,6 +24,7 @@ func TestCheckersFor(t *testing.T) {
 				"python unit tests",
 				"python extra credit tests",
 				"notebook unit tests",
+				"notebook extra credit tests",
 				"cleared notebook output",
 				"unchanged notebook cells",
 				"unmodified test files",

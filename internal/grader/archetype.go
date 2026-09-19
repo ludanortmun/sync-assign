@@ -28,6 +28,7 @@ func CheckersFor(archetype *config.Archetype) ([]Checker, error) {
 			CheckIf(NewPythonUnitTestChecker(), hasPythonUnitTests, "assignment has no unit tests"),
 			CheckIf(NewPythonExtraCreditTestChecker(), hasExtraCreditTests, "assignment has no extra credits"),
 			NewNotebookUnitTestChecker(),
+			CheckIf(NewNotebookExtraCreditTestChecker(), hasExtraCreditNotebooks, "assignment has no extra-credit notebooks"),
 			NewClearedOutputChecker(),
 			NewUnchangedCellsChecker(),
 			NewNoFileModifiedChecker(pythonTestPatterns...),
@@ -45,4 +46,9 @@ func hasPythonUnitTests(environment Environment) bool {
 func hasExtraCreditTests(environment Environment) bool {
 	extraCreditsFiles, err := extraCreditTestPaths(environment.StudentDir)
 	return err == nil && len(extraCreditsFiles) > 0
+}
+
+func hasExtraCreditNotebooks(environment Environment) bool {
+	extraCreditFiles, err := extraCreditNotebookPaths(environment.StudentDir)
+	return err == nil && len(extraCreditFiles) > 0
 }
