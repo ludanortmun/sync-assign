@@ -4,13 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/alecthomas/kong"
 	"github.com/ludanortmun/sync-assign/internal/commands"
 )
 
-var VersionTag string
+var version = "dev"
 
 type syncCLI struct {
 	AssignmentID string  `arg:"" name:"id" help:"Assignment ID from the teacher configuration."`
@@ -119,7 +118,7 @@ func main() {
 		kong.Help(helpPrinter),
 		kong.ShortHelp(shortHelpPrinter),
 		kong.UsageOnError(),
-		kong.Vars{"version": resolveVersion()},
+		kong.Vars{"version": version},
 		kong.BindTo(context.Background(), (*context.Context)(nil)),
 	)
 	ctx.FatalIfErrorf(ctx.Run())
@@ -146,12 +145,4 @@ func shortHelpPrinter(options kong.HelpOptions, ctx *kong.Context) error {
 		return err
 	}
 	return kong.DefaultShortHelpPrinter(options, ctx)
-}
-
-func resolveVersion() string {
-	if VersionTag != "" {
-		return VersionTag
-	}
-
-	return fmt.Sprintf("dev-%s", time.Now().Format("20060102T150405"))
 }
