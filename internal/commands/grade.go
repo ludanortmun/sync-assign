@@ -323,7 +323,7 @@ func writeGradeReport(
 	}
 	if _, err := fmt.Fprintf(
 		output,
-		"summary: %d passed, %d failed, %d skipped\nresult: %s\n",
+		"\nsummary: \x1b[32m%d passed\x1b[0m, \x1b[31m%d failed\x1b[0m, \x1b[33m%d skipped\x1b[0m\nresult: %s\n",
 		passed,
 		failed,
 		skipped,

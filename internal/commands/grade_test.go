@@ -107,7 +107,7 @@ func TestGradeWritesReportAndReturnsErrorWhenCheckerFails(t *testing.T) {
 	}
 	report := output.String()
 	for _, want := range []string{
-		"summary: 0 passed, 1 failed, 0 skipped",
+		"summary: \x1b[32m0 passed\x1b[0m, \x1b[31m1 failed\x1b[0m, \x1b[33m0 skipped\x1b[0m",
 		"result: failed",
 	} {
 		if !strings.Contains(report, want) {
@@ -156,13 +156,13 @@ func TestWriteGradeReportStylesAndRoutesStates(t *testing.T) {
 		"[RUNNING] active",
 		"\x1b[32m[SUCCESS] complete\x1b[0m",
 		"\x1b[33m[SKIPPED] optional\x1b[0m",
-		"summary: 1 passed, 1 failed, 1 skipped",
+		"summary: \x1b[32m1 passed\x1b[0m, \x1b[31m1 failed\x1b[0m, \x1b[33m1 skipped\x1b[0m",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}
 	}
-	if strings.Contains(stdout, "[FAILED]") || strings.Contains(stdout, "\x1b[31m") {
+	if strings.Contains(stdout, "[FAILED]") {
 		t.Fatalf("stdout contains failed state:\n%s", stdout)
 	}
 
