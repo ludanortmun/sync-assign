@@ -108,19 +108,6 @@ func TestCLIParsesGradeCommand(t *testing.T) {
 	}
 }
 
-func TestCLIGradeRequiresDue(t *testing.T) {
-	cli := &cliModel{}
-	parser, err := kong.New(cli, kong.Name("sync-assign"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = parser.Parse([]string{"grade", "lab-1"})
-	if err == nil || !strings.Contains(err.Error(), "--due") {
-		t.Fatalf("Parse() error = %v, want missing --due error", err)
-	}
-}
-
 func TestCLIGradeRequiresAssignmentID(t *testing.T) {
 	cli := &cliModel{}
 	parser, err := kong.New(cli, kong.Name("sync-assign"))

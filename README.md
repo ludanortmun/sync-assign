@@ -219,6 +219,11 @@ main Python test check and run by a separate extra-credit check. Pytest runs in
 quiet mode without tracebacks, and failed checks report only pytest's short test
 summary.
 
+Each check is printed as soon as it starts and again when it completes.
+Running checks use the default terminal color, successful checks are green,
+skipped checks are yellow, and failed checks are written to standard error in
+red.
+
 ## Teacher mirror behavior
 
 By default, the teacher repository is kept as a persistent mirror and updated

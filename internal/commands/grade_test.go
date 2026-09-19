@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,7 +28,7 @@ func TestGradeSelectsLatestCommitAtOrBeforeDueAndCleansWorktree(t *testing.T) {
 
 	var output strings.Builder
 	var gradedContents string
-	command := newGradeCommand(t, teacher, &output, func(environment grader.Environment) grader.Result {
+	command := newGradeCommand(t, teacher, &output, io.Discard, func(environment grader.Environment) grader.Result {
 		gradedContents = readWorkflowFile(t, filepath.Join(environment.StudentDir, "answer.txt"))
 		return grader.Result{Status: grader.Passed}
 	})
@@ -68,6 +69,7 @@ func TestGradeRejectsUnsetAndExplicitUnsupportedArchetypes(t *testing.T) {
 			commitGradeFileAt(t, student, "lab/answer.txt", "answer\n", "2026-01-10T10:00:00Z")
 			command := newGradeWithDependencies(
 				&strings.Builder{},
+				io.Discard,
 				execGitRootValidator{},
 				gitcmd.New(),
 				gradeMirrorOpener(teacher),
@@ -91,7 +93,8 @@ func TestGradeWritesReportAndReturnsErrorWhenCheckerFails(t *testing.T) {
 	student := newGradeStudent(t, teacher)
 	commitGradeFileAt(t, student, "lab/answer.txt", "answer\n", "2026-01-10T10:00:00Z")
 	var output strings.Builder
-	command := newGradeCommand(t, teacher, &output, func(grader.Environment) grader.Result {
+	var errorOutput strings.Builder
+	command := newGradeCommand(t, teacher, &output, &errorOutput, func(grader.Environment) grader.Result {
 		return grader.Result{Status: grader.Failed, Detail: "tests failed deliberately"}
 	})
 
@@ -104,8 +107,6 @@ func TestGradeWritesReportAndReturnsErrorWhenCheckerFails(t *testing.T) {
 	}
 	report := output.String()
 	for _, want := range []string{
-		"[FAILED] injected checker",
-		"tests failed deliberately",
 		"summary: 0 passed, 1 failed, 0 skipped",
 		"result: failed",
 	} {
@@ -113,7 +114,67 @@ func TestGradeWritesReportAndReturnsErrorWhenCheckerFails(t *testing.T) {
 			t.Errorf("report missing %q:\n%s", want, report)
 		}
 	}
+	for _, want := range []string{
+		"\x1b[31m[FAILED] injected checker\x1b[0m",
+		"tests failed deliberately",
+	} {
+		if !strings.Contains(errorOutput.String(), want) {
+			t.Errorf("error report missing %q:\n%s", want, errorOutput.String())
+		}
+	}
+	if strings.Contains(report, "[FAILED]") {
+		t.Fatalf("failed check was written to stdout:\n%s", report)
+	}
 	assertNoGradeWorktrees(t, student)
+}
+
+func TestWriteGradeReportStylesAndRoutesStates(t *testing.T) {
+	results := make(chan grader.Result, 4)
+	results <- grader.Result{Checker: "active", Status: grader.Running}
+	results <- grader.Result{Checker: "complete", Status: grader.Passed}
+	results <- grader.Result{Checker: "optional", Status: grader.Skipped, Detail: "not configured"}
+	results <- grader.Result{Checker: "broken", Status: grader.Failed, Detail: "assertion failed"}
+	close(results)
+
+	var output strings.Builder
+	var errorOutput strings.Builder
+	err := writeGradeReport(
+		&output,
+		&errorOutput,
+		"lab",
+		"main",
+		"abc123",
+		time.Date(2026, 9, 18, 23, 59, 59, 0, time.UTC),
+		results,
+	)
+	if err == nil || !strings.Contains(err.Error(), "failed grading checks") {
+		t.Fatalf("writeGradeReport() error = %v, want failed checks error", err)
+	}
+
+	stdout := output.String()
+	for _, want := range []string{
+		"[RUNNING] active",
+		"\x1b[32m[SUCCESS] complete\x1b[0m",
+		"\x1b[33m[SKIPPED] optional\x1b[0m",
+		"summary: 1 passed, 1 failed, 1 skipped",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout missing %q:\n%s", want, stdout)
+		}
+	}
+	if strings.Contains(stdout, "[FAILED]") || strings.Contains(stdout, "\x1b[31m") {
+		t.Fatalf("stdout contains failed state:\n%s", stdout)
+	}
+
+	stderr := errorOutput.String()
+	for _, want := range []string{
+		"\x1b[31m[FAILED] broken\x1b[0m",
+		"assertion failed",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr missing %q:\n%s", want, stderr)
+		}
+	}
 }
 
 func TestParseDueDate(t *testing.T) {
@@ -154,7 +215,7 @@ func TestGradePullFastForwardsCheckedOutBranch(t *testing.T) {
 	runGitCommand(t, upstream, "push")
 
 	var gradedContents string
-	command := newGradeCommand(t, teacher, &strings.Builder{}, func(environment grader.Environment) grader.Result {
+	command := newGradeCommand(t, teacher, &strings.Builder{}, io.Discard, func(environment grader.Environment) grader.Result {
 		gradedContents = readWorkflowFile(t, filepath.Join(environment.StudentDir, "answer.txt"))
 		return grader.Result{Status: grader.Passed}
 	})
@@ -189,7 +250,7 @@ func TestGradePullRejectsNonFastForward(t *testing.T) {
 	commitGradeFileAt(t, student, "lab/local.txt", "local\n", "2026-01-11T11:00:00Z")
 
 	checkerRan := false
-	command := newGradeCommand(t, teacher, &strings.Builder{}, func(grader.Environment) grader.Result {
+	command := newGradeCommand(t, teacher, &strings.Builder{}, io.Discard, func(grader.Environment) grader.Result {
 		checkerRan = true
 		return grader.Result{Status: grader.Passed}
 	})
@@ -210,12 +271,14 @@ func TestGradePullRejectsNonFastForward(t *testing.T) {
 func newGradeCommand(
 	t *testing.T,
 	teacher string,
-	output *strings.Builder,
+	output io.Writer,
+	errorOutput io.Writer,
 	check func(grader.Environment) grader.Result,
 ) *Grade {
 	t.Helper()
 	return newGradeWithDependencies(
 		output,
+		errorOutput,
 		execGitRootValidator{},
 		gitcmd.New(),
 		gradeMirrorOpener(teacher),

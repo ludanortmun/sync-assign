@@ -20,13 +20,13 @@ func CheckersFor(archetype *config.Archetype) ([]Checker, error) {
 	case config.ArchetypePython:
 		return []Checker{
 			NewPythonUnitTestChecker(),
-			NewPythonExtraCreditTestChecker(),
+			CheckIf(NewPythonExtraCreditTestChecker(), hasExtraCreditTests, "assignment has no extra credits"),
 			NewNoFileModifiedChecker(pythonTestPatterns...),
 		}, nil
 	case config.ArchetypePythonJupyter:
 		return []Checker{
-			CheckIf(NewPythonUnitTestChecker(), hasPythonUnitTests),
-			CheckIf(NewPythonExtraCreditTestChecker(), hasPythonUnitTests),
+			CheckIf(NewPythonUnitTestChecker(), hasPythonUnitTests, "assignment has no unit tests"),
+			CheckIf(NewPythonExtraCreditTestChecker(), hasExtraCreditTests, "assignment has no extra credits"),
 			NewNotebookUnitTestChecker(),
 			NewClearedOutputChecker(),
 			NewUnchangedCellsChecker(),
@@ -42,15 +42,7 @@ func hasPythonUnitTests(environment Environment) bool {
 	return err == nil && info.IsDir()
 }
 
-func unavailableChecker(name string) Checker {
-	return Checker{
-		Name: name,
-		Check: func(Environment) Result {
-			return Result{
-				Checker: name,
-				Status:  Failed,
-				Detail:  "checker implementation is unavailable",
-			}
-		},
-	}
+func hasExtraCreditTests(environment Environment) bool {
+	extraCreditsFiles, err := extraCreditTestPaths(environment.StudentDir)
+	return err == nil && len(extraCreditsFiles) > 0
 }

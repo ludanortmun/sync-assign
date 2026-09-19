@@ -50,6 +50,7 @@ func newPythonUnitTestChecker(executor commandExecutor) Checker {
 }
 
 // NewPythonExtraCreditTestChecker checks extra-credit Python tests separately.
+// Extra-credit tests are expected to be in files named "*extra_credit.py" in the student repository.
 func NewPythonExtraCreditTestChecker() Checker {
 	return newPythonExtraCreditTestChecker(executeCommand)
 }
@@ -78,6 +79,7 @@ func newPythonExtraCreditTestChecker(executor commandExecutor) Checker {
 }
 
 // NewNotebookUnitTestChecker checks notebooks in the student repository with nbmake.
+// Notebooks must be in a subdirectory named "notebooks" in the student repository.
 func NewNotebookUnitTestChecker() Checker {
 	return newNotebookUnitTestChecker(executeCommand)
 }
@@ -90,7 +92,7 @@ func newNotebookUnitTestChecker(executor commandExecutor) Checker {
 			args, err := uvArgs(
 				environment.StudentDir,
 				"--with", "pytest", "--with", "nbmake", "--",
-				"pytest", "-q", "--tb=no", "--nbmake",
+				"pytest", "-q", "--tb=no", "--nbmake", "notebooks",
 			)
 			if err != nil {
 				return failedResult(name, err.Error())

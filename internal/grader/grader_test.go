@@ -3,6 +3,7 @@ package grader
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestRunPreservesOrderAndSetsCheckerName(t *testing.T) {
@@ -18,20 +19,24 @@ func TestRunPreservesOrderAndSetsCheckerName(t *testing.T) {
 		}},
 	}
 
-	report := Run(Environment{}, checkers)
+	results := make(chan Result)
+	go Run(Environment{}, checkers, results)
+	var got []Result
+	for result := range results {
+		got = append(got, result)
+	}
 
 	want := []Result{
+		{Checker: "first", Status: Running},
 		{Checker: "first", Status: Failed},
+		{Checker: "second", Status: Running},
 		{Checker: "second", Status: Skipped, Detail: "optional"},
 	}
-	if !reflect.DeepEqual(report.Results, want) {
-		t.Fatalf("Run results = %#v, want %#v", report.Results, want)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Run results = %#v, want %#v", got, want)
 	}
 	if !reflect.DeepEqual(calls, []string{"first", "second"}) {
 		t.Fatalf("checker call order = %#v, want first then second", calls)
-	}
-	if report.Passed() {
-		t.Fatal("Report.Passed() = true, want false")
 	}
 }
 
@@ -55,10 +60,44 @@ func TestReportPassedOnlyFailsForFailedResult(t *testing.T) {
 }
 
 func TestRunHandlesNilCheck(t *testing.T) {
-	report := Run(Environment{}, []Checker{{Name: "nil"}})
+	results := make(chan Result)
+	go Run(Environment{}, []Checker{{Name: "nil"}}, results)
+	var got []Result
+	for result := range results {
+		got = append(got, result)
+	}
 
-	if len(report.Results) != 1 || report.Results[0].Status != Failed {
-		t.Fatalf("Run result = %#v, want one failed result", report.Results)
+	if len(got) != 2 || got[0].Status != Running || got[1].Status != Failed {
+		t.Fatalf("Run results = %#v, want running then failed", got)
+	}
+}
+
+func TestRunEmitsRunningBeforeCheckerCompletes(t *testing.T) {
+	release := make(chan struct{})
+	results := make(chan Result)
+	go Run(Environment{}, []Checker{{
+		Name: "slow",
+		Check: func(Environment) Result {
+			<-release
+			return Result{Status: Passed}
+		},
+	}}, results)
+
+	select {
+	case result := <-results:
+		if result.Checker != "slow" || result.Status != Running {
+			t.Fatalf("first result = %#v, want running slow checker", result)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("running result was not emitted before checker completion")
+	}
+
+	close(release)
+	if result := <-results; result.Status != Passed {
+		t.Fatalf("final result = %#v, want passed", result)
+	}
+	if _, ok := <-results; ok {
+		t.Fatal("results channel remained open")
 	}
 }
 
@@ -72,7 +111,7 @@ func TestCheckIf(t *testing.T) {
 		},
 	}
 
-	skipped := CheckIf(checker, func(Environment) bool { return false }).Check(Environment{})
+	skipped := CheckIf(checker, func(Environment) bool { return false }, "skip message").Check(Environment{})
 	if skipped.Checker != checker.Name || skipped.Status != Skipped || skipped.Detail == "" {
 		t.Fatalf("false condition result = %#v, want named skip with detail", skipped)
 	}
@@ -80,7 +119,7 @@ func TestCheckIf(t *testing.T) {
 		t.Fatalf("underlying checker called %d times, want 0", calls)
 	}
 
-	passed := CheckIf(checker, func(Environment) bool { return true }).Check(Environment{})
+	passed := CheckIf(checker, func(Environment) bool { return true }, "skipped").Check(Environment{})
 	if passed.Checker != checker.Name || passed.Status != Passed {
 		t.Fatalf("true condition result = %#v, want named pass", passed)
 	}
@@ -90,10 +129,10 @@ func TestCheckIf(t *testing.T) {
 }
 
 func TestCheckIfHandlesNilFunctions(t *testing.T) {
-	if result := CheckIf(Checker{Name: "nil condition"}, nil).Check(Environment{}); result.Status != Skipped {
-		t.Fatalf("nil condition status = %q, want %q", result.Status, Skipped)
+	if result := CheckIf(Checker{Name: "nil condition"}, nil, "skip message").Check(Environment{}); result.Status != Failed {
+		t.Fatalf("nil condition status = %q, want %q", result.Status, Failed)
 	}
-	if result := CheckIf(Checker{Name: "nil checker"}, func(Environment) bool { return true }).Check(Environment{}); result.Status != Failed {
+	if result := CheckIf(Checker{Name: "nil checker"}, func(Environment) bool { return true }, "skip message").Check(Environment{}); result.Status != Failed {
 		t.Fatalf("nil checker status = %q, want %q", result.Status, Failed)
 	}
 }
@@ -109,7 +148,7 @@ func TestCheckIfEvaluatesConditionAtRunTimeAndUsesWrapperName(t *testing.T) {
 	}, func(environment Environment) bool {
 		conditionCalls++
 		return enabled && environment.StudentDir == "student"
-	})
+	}, "skipped because not enabled")
 
 	if checker.Name != "runtime checker" {
 		t.Fatalf("wrapped checker name = %q, want %q", checker.Name, "runtime checker")

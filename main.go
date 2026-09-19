@@ -39,7 +39,7 @@ func (command *gradeCLI) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return commands.NewGrade(os.Stdout).Run(ctx, command.AssignmentID, commands.GradeOptions{
+	return commands.NewGrade(os.Stdout, os.Stderr).Run(ctx, command.AssignmentID, commands.GradeOptions{
 		RepositoryRoot: root,
 		ConfigPath:     command.ConfigPath,
 		DueDate:        command.Due,

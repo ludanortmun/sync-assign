@@ -11,6 +11,7 @@ type Environment struct {
 type Status string
 
 const (
+	Running Status = "running"
 	Passed  Status = "passed"
 	Failed  Status = "failed"
 	Skipped Status = "skipped"
@@ -45,34 +46,37 @@ func (report Report) Passed() bool {
 }
 
 // Run executes each checker in order.
-func Run(environment Environment, checkers []Checker) Report {
-	report := Report{Results: make([]Result, 0, len(checkers))}
+func Run(environment Environment, checkers []Checker, results chan<- Result) {
 	for _, checker := range checkers {
+		results <- Result{
+			Checker: checker.Name,
+			Status:  Running,
+		}
 		if checker.Check == nil {
-			report.Results = append(report.Results, Result{
+			results <- Result{
 				Checker: checker.Name,
 				Status:  Failed,
 				Detail:  "checker has no check function",
-			})
+			}
 			continue
 		}
 
 		result := checker.Check(environment)
 		result.Checker = checker.Name
-		report.Results = append(report.Results, result)
+		results <- result
 	}
-	return report
+	close(results)
 }
 
 // CheckIf conditionally runs checker. A false or nil condition skips it.
-func CheckIf(checker Checker, condition func(Environment) bool) Checker {
+func CheckIf(checker Checker, condition func(Environment) bool, skipMessage string) Checker {
 	return Checker{
 		Name: checker.Name,
 		Check: func(environment Environment) Result {
 			if condition == nil {
 				return Result{
 					Checker: checker.Name,
-					Status:  Skipped,
+					Status:  Failed,
 					Detail:  "condition is not configured",
 				}
 			}
@@ -80,7 +84,7 @@ func CheckIf(checker Checker, condition func(Environment) bool) Checker {
 				return Result{
 					Checker: checker.Name,
 					Status:  Skipped,
-					Detail:  "condition not met",
+					Detail:  skipMessage,
 				}
 			}
 			if checker.Check == nil {

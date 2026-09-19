@@ -41,6 +41,7 @@ type checkerFactory func(*config.Archetype) ([]grader.Checker, error)
 // Grade evaluates an assignment from the last student commit at or before its due date.
 type Grade struct {
 	output      io.Writer
+	errorOutput io.Writer
 	rootChecker GitRootValidator
 	git         gradeGit
 	openMirror  mirrorOpener
@@ -48,9 +49,10 @@ type Grade struct {
 }
 
 // NewGrade returns a grade command using git and the standard mirror and grader implementations.
-func NewGrade(output io.Writer) *Grade {
+func NewGrade(output, errorOutput io.Writer) *Grade {
 	return newGradeWithDependencies(
 		output,
+		errorOutput,
 		execGitRootValidator{},
 		gitcmd.New(),
 		func(ctx context.Context, cfg config.StudentConfig) (teacherMirror, error) {
@@ -62,6 +64,7 @@ func NewGrade(output io.Writer) *Grade {
 
 func newGradeWithDependencies(
 	output io.Writer,
+	errorOutput io.Writer,
 	rootChecker GitRootValidator,
 	git gradeGit,
 	openMirror mirrorOpener,
@@ -69,6 +72,7 @@ func newGradeWithDependencies(
 ) *Grade {
 	return &Grade{
 		output:      output,
+		errorOutput: errorOutput,
 		rootChecker: rootChecker,
 		git:         git,
 		openMirror:  openMirror,
@@ -96,6 +100,9 @@ func (command *Grade) Run(
 	}
 	if command.output == nil {
 		return errors.New("grade output writer is not configured")
+	}
+	if command.errorOutput == nil {
+		return errors.New("grade error output writer is not configured")
 	}
 	if strings.TrimSpace(assignmentID) == "" {
 		return errors.New("assignment ID must not be empty")
@@ -221,15 +228,13 @@ func (command *Grade) Run(
 	}
 	worktreeAdded = true
 
-	report := grader.Run(grader.Environment{
+	results := make(chan grader.Result)
+	go grader.Run(grader.Environment{
 		StudentDir: filepath.Join(worktree, spec.Path),
 		TeacherDir: filepath.Join(teacherMirror.Path(), spec.Path),
-	}, checkers)
-	if err := writeGradeReport(command.output, assignmentID, branch, commit, due, report); err != nil {
+	}, checkers, results)
+	if err := writeGradeReport(command.output, command.errorOutput, assignmentID, branch, commit, due, results); err != nil {
 		return err
-	}
-	if !report.Passed() {
-		return fmt.Errorf("assignment %q failed grading checks", assignmentID)
 	}
 	return nil
 }
@@ -259,15 +264,16 @@ func parseDueDate(value string, location *time.Location) (time.Time, error) {
 }
 
 func writeGradeReport(
-	writer io.Writer,
+	output io.Writer,
+	errorOutput io.Writer,
 	assignmentID string,
 	branch string,
 	commit string,
 	due time.Time,
-	report grader.Report,
+	results <-chan grader.Result,
 ) error {
 	if _, err := fmt.Fprintf(
-		writer,
+		output,
 		"grade: %s\nbranch: %s\ncommit: %s\ndue: %s\nchecks:\n",
 		assignmentID,
 		branch,
@@ -276,18 +282,31 @@ func writeGradeReport(
 	); err != nil {
 		return fmt.Errorf("write grade report: %w", err)
 	}
-
+	report := grader.Report{}
 	passed, failed, skipped := 0, 0, 0
-	for _, result := range report.Results {
+	for result := range results {
+		writer := output
+		label := strings.ToUpper(string(result.Status))
+		color, reset := "", ""
 		switch result.Status {
+		case grader.Running:
+			label = "RUNNING"
 		case grader.Passed:
+			label = "SUCCESS"
+			color, reset = "\x1b[32m", "\x1b[0m"
 			passed++
 		case grader.Failed:
+			color, reset = "\x1b[31m", "\x1b[0m"
+			writer = errorOutput
 			failed++
 		case grader.Skipped:
+			color, reset = "\x1b[33m", "\x1b[0m"
 			skipped++
 		}
-		if _, err := fmt.Fprintf(writer, "  [%s] %s\n", strings.ToUpper(string(result.Status)), result.Checker); err != nil {
+		if result.Status != grader.Running {
+			report.Results = append(report.Results, result)
+		}
+		if _, err := fmt.Fprintf(writer, "  %s[%s] %s%s\n", color, label, result.Checker, reset); err != nil {
 			return fmt.Errorf("write grade report: %w", err)
 		}
 		if result.Detail != "" {
@@ -303,7 +322,7 @@ func writeGradeReport(
 		outcome = "failed"
 	}
 	if _, err := fmt.Fprintf(
-		writer,
+		output,
 		"summary: %d passed, %d failed, %d skipped\nresult: %s\n",
 		passed,
 		failed,
@@ -311,6 +330,9 @@ func writeGradeReport(
 		outcome,
 	); err != nil {
 		return fmt.Errorf("write grade report: %w", err)
+	}
+	if !report.Passed() {
+		return errors.New("assignment has failed grading checks")
 	}
 	return nil
 }

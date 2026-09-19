@@ -82,7 +82,7 @@ func TestNotebookUnitTestCheckerUVArguments(t *testing.T) {
 	want := []string{
 		"run", "--with-requirements", "requirements.txt",
 		"--with", "pytest", "--with", "nbmake", "--",
-		"pytest", "-q", "--tb=no", "--nbmake",
+		"pytest", "-q", "--tb=no", "--nbmake", "notebooks",
 	}
 	if result.Status != Passed || !reflect.DeepEqual(gotArgs, want) {
 		t.Fatalf("result = %#v, args = %#v, want passed and %#v", result, gotArgs, want)
