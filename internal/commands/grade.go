@@ -280,6 +280,7 @@ func writeGradeReport(
 		commit,
 		due.Format(time.RFC3339),
 	); err != nil {
+		drainResults(results)
 		return fmt.Errorf("write grade report: %w", err)
 	}
 	return writeCheckResults(output, errorOutput, results)
@@ -292,7 +293,11 @@ func writeCheckResults(
 ) error {
 	report := grader.Report{}
 	passed, failed, skipped := 0, 0, 0
+	var writeErr error
 	for result := range results {
+		if writeErr != nil {
+			continue
+		}
 		writer := output
 		label := strings.ToUpper(string(result.Status))
 		color, reset := "", ""
@@ -315,15 +320,20 @@ func writeCheckResults(
 			report.Results = append(report.Results, result)
 		}
 		if _, err := fmt.Fprintf(writer, "  %s[%s] %s%s\n", color, label, result.Checker, reset); err != nil {
-			return fmt.Errorf("write check results: %w", err)
+			writeErr = fmt.Errorf("write check results: %w", err)
+			continue
 		}
 		if result.Detail != "" {
 			for _, line := range strings.Split(result.Detail, "\n") {
 				if _, err := fmt.Fprintf(writer, "    %s\n", line); err != nil {
-					return fmt.Errorf("write check results: %w", err)
+					writeErr = fmt.Errorf("write check results: %w", err)
+					break
 				}
 			}
 		}
+	}
+	if writeErr != nil {
+		return writeErr
 	}
 	outcome := "passed"
 	outcomeColor := "\x1b[32m"
@@ -346,4 +356,9 @@ func writeCheckResults(
 		return errors.New("assignment has failed grading checks")
 	}
 	return nil
+}
+
+func drainResults(results <-chan grader.Result) {
+	for range results {
+	}
 }

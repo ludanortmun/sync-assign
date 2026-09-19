@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 )
@@ -21,11 +20,14 @@ var ignoredProtectedFileDirs = map[string]struct{}{
 }
 
 // NewNoFileModifiedChecker checks that tests supplied by the teacher are unchanged.
-func NewNoFileModifiedChecker(_ ...string) Checker {
+func NewNoFileModifiedChecker(patterns ...string) Checker {
+	if len(patterns) == 0 {
+		patterns = []string{"tests/**", "test_*.py"}
+	}
 	return Checker{
 		Name: noFileModifiedCheckerName,
 		Check: func(environment Environment) Result {
-			issues := protectedFileIssues(environment)
+			issues := protectedFileIssues(environment, patterns)
 			if len(issues) == 0 {
 				return Result{
 					Checker: noFileModifiedCheckerName,
@@ -44,7 +46,7 @@ func NewNoFileModifiedChecker(_ ...string) Checker {
 	}
 }
 
-func protectedFileIssues(environment Environment) []string {
+func protectedFileIssues(environment Environment, patterns []string) []string {
 	var issues []string
 	walkErr := filepath.WalkDir(environment.TeacherDir, func(path string, entry fs.DirEntry, err error) error {
 		relativePath, relativeErr := filepath.Rel(environment.TeacherDir, path)
@@ -66,7 +68,7 @@ func protectedFileIssues(environment Environment) []string {
 			}
 			return nil
 		}
-		if !isProtectedFile(relativePath) {
+		if !matchesProtectedPath(relativePath, patterns) {
 			return nil
 		}
 
@@ -114,11 +116,25 @@ func protectedFileIssues(environment Environment) []string {
 	return issues
 }
 
-func isProtectedFile(relativePath string) bool {
-	segments := strings.Split(relativePath, "/")
-	if slices.Contains(segments[:len(segments)-1], "tests") {
-		return true
+func matchesProtectedPath(relativePath string, patterns []string) bool {
+	for _, pattern := range patterns {
+		pattern = filepath.ToSlash(pattern)
+		if strings.HasSuffix(pattern, "/**") {
+			directory := strings.TrimSuffix(pattern, "/**")
+			if relativePath == directory || strings.Contains(relativePath, "/"+directory+"/") ||
+				strings.HasPrefix(relativePath, directory+"/") {
+				return true
+			}
+			continue
+		}
+		if matched, err := filepath.Match(pattern, relativePath); err == nil && matched {
+			return true
+		}
+		if !strings.Contains(pattern, "/") {
+			if matched, err := filepath.Match(pattern, filepath.Base(relativePath)); err == nil && matched {
+				return true
+			}
+		}
 	}
-	matched, err := filepath.Match("test_*.py", segments[len(segments)-1])
-	return err == nil && matched
+	return false
 }

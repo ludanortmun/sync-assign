@@ -49,13 +49,31 @@ func TestReportPassedOnlyFailsForFailedResult(t *testing.T) {
 		{name: "empty", want: true},
 		{name: "passed and skipped", results: []Result{{Status: Passed}, {Status: Skipped}}, want: true},
 		{name: "failed", results: []Result{{Status: Passed}, {Status: Failed}}, want: false},
+		{name: "non-blocking failed", results: []Result{{Status: Failed, NonBlocking: true}}, want: true},
 	}
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			if got := (Report{Results: test.results}).Passed(); got != test.want {
 				t.Fatalf("Report.Passed() = %v, want %v", got, test.want)
 			}
 		})
+	}
+}
+
+func TestNonBlockingCheckerMarksResults(t *testing.T) {
+	results := make(chan Result, 2)
+	go Run(Environment{}, []Checker{NonBlocking(Checker{
+		Name: "extra credit",
+		Check: func(Environment) Result {
+			return Result{Status: Failed}
+		},
+	})}, results)
+
+	<-results
+	result := <-results
+	if !result.NonBlocking || !(Report{Results: []Result{result}}).Passed() {
+		t.Fatalf("result = %#v, want non-blocking failed result", result)
 	}
 }
 

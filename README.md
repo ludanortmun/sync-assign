@@ -15,8 +15,8 @@ directories; a student syncs one assignment at a time.
 - Git available on `PATH`
 - Access to the configured teacher repository
 - A student Git repository; commands must run from its root
-- [`uv`](https://docs.astral.sh/uv/) available on `PATH` when grading Python
-  assignments
+- [`uv`](https://docs.astral.sh/uv/) available on `PATH` when checking or
+  grading Python or Jupyter assignments
 
 Release binaries are built for macOS on Apple silicon (`darwin/arm64`) and
 Linux on x86-64 (`linux/amd64`).
@@ -69,7 +69,7 @@ assignments:
 
 Each key is the assignment ID students pass to the CLI. A scalar value is the
 name of one top-level directory and leaves the archetype unset; it can be
-synced, but not graded. A mapping supplies `path` plus an `archetype` of
+synced, but not checked or graded. A mapping supplies `path` plus an `archetype` of
 `python` or `jupyter`. Assignment paths must be single top-level
 directory names; absolute and nested paths are rejected. The default teacher
 branch is `main`.

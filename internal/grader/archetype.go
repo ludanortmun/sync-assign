@@ -19,19 +19,19 @@ func CheckersFor(archetype *config.Archetype) ([]Checker, error) {
 	switch *archetype {
 	case config.ArchetypePython:
 		return []Checker{
-			NewPythonUnitTestChecker(),
-			CheckIf(NewPythonExtraCreditTestChecker(), hasExtraCreditTests, "assignment has no extra credits"),
 			NewNoFileModifiedChecker(pythonTestPatterns...),
+			NewPythonUnitTestChecker(),
+			CheckIf(NonBlocking(NewPythonExtraCreditTestChecker()), hasExtraCreditTests, "assignment has no extra credits"),
 		}, nil
 	case config.ArchetypeJupyter:
 		return []Checker{
-			CheckIf(NewPythonUnitTestChecker(), hasPythonUnitTests, "assignment has no unit tests"),
-			CheckIf(NewPythonExtraCreditTestChecker(), hasExtraCreditTests, "assignment has no extra credits"),
-			NewNotebookUnitTestChecker(),
-			CheckIf(NewNotebookExtraCreditTestChecker(), hasExtraCreditNotebooks, "assignment has no extra-credit notebooks"),
+			NewNoFileModifiedChecker(pythonTestPatterns...),
 			NewClearedOutputChecker(),
 			NewUnchangedCellsChecker(),
-			NewNoFileModifiedChecker(pythonTestPatterns...),
+			CheckIf(NewPythonUnitTestChecker(), hasPythonUnitTests, "assignment has no unit tests"),
+			CheckIf(NonBlocking(NewPythonExtraCreditTestChecker()), hasExtraCreditTests, "assignment has no extra credits"),
+			NewNotebookUnitTestChecker(),
+			CheckIf(NonBlocking(NewNotebookExtraCreditTestChecker()), hasExtraCreditNotebooks, "assignment has no extra-credit notebooks"),
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported assignment archetype %q", *archetype)

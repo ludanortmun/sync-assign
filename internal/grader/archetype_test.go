@@ -16,18 +16,18 @@ func TestCheckersFor(t *testing.T) {
 	}{
 		{
 			archetype: config.ArchetypePython,
-			wantNames: []string{"python unit tests", "python extra credit tests", "unmodified test files"},
+			wantNames: []string{"unmodified test files", "python unit tests", "python extra credit tests"},
 		},
 		{
 			archetype: config.ArchetypeJupyter,
 			wantNames: []string{
+				"unmodified test files",
+				"cleared notebook output",
+				"unchanged notebook cells",
 				"python unit tests",
 				"python extra credit tests",
 				"notebook unit tests",
 				"notebook extra credit tests",
-				"cleared notebook output",
-				"unchanged notebook cells",
-				"unmodified test files",
 			},
 		},
 	}
@@ -68,14 +68,14 @@ func TestJupyterPythonTestsDependOnTestsDirectory(t *testing.T) {
 
 	studentDir := t.TempDir()
 	environment := Environment{StudentDir: studentDir}
-	if result := checkers[0].Check(environment); result.Status != Skipped {
+	if result := checkers[3].Check(environment); result.Status != Skipped {
 		t.Fatalf("without tests directory status = %q, want %q", result.Status, Skipped)
 	}
 
 	if err := os.Mkdir(filepath.Join(studentDir, "tests"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if result := checkers[0].Check(environment); result.Status == Skipped {
+	if result := checkers[3].Check(environment); result.Status == Skipped {
 		t.Fatalf("with tests directory status = %q, want checker to run", result.Status)
 	}
 }

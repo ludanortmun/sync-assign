@@ -102,6 +102,23 @@ func TestNoFileModifiedCheckerReportsWrongStudentFileType(t *testing.T) {
 	}
 }
 
+func TestNoFileModifiedCheckerUsesSuppliedPatterns(t *testing.T) {
+	teacher, student := assignmentDirs(t)
+	writeAssignmentFile(t, teacher, "protected/answer.py", "teacher\n")
+	writeAssignmentFile(t, student, "protected/answer.py", "student\n")
+	writeAssignmentFile(t, teacher, "test_unprotected.py", "teacher\n")
+	writeAssignmentFile(t, student, "test_unprotected.py", "student\n")
+
+	result := NewNoFileModifiedChecker("protected/**").Check(Environment{
+		TeacherDir: teacher,
+		StudentDir: student,
+	})
+
+	if result.Status != Failed || result.Detail != "protected/answer.py: modified" {
+		t.Fatalf("result = %#v, want only supplied pattern to be protected", result)
+	}
+}
+
 func assignmentDirs(t *testing.T) (string, string) {
 	t.Helper()
 	return t.TempDir(), t.TempDir()

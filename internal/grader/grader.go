@@ -19,15 +19,17 @@ const (
 
 // Result is the outcome of one checker.
 type Result struct {
-	Checker string
-	Status  Status
-	Detail  string
+	Checker     string
+	Status      Status
+	Detail      string
+	NonBlocking bool
 }
 
 // Checker is a named grading check.
 type Checker struct {
-	Name  string
-	Check func(Environment) Result
+	Name        string
+	Check       func(Environment) Result
+	NonBlocking bool
 }
 
 // Report contains checker results in execution order.
@@ -38,7 +40,7 @@ type Report struct {
 // Passed reports whether no checker failed.
 func (report Report) Passed() bool {
 	for _, result := range report.Results {
-		if result.Status == Failed {
+		if result.Status == Failed && !result.NonBlocking {
 			return false
 		}
 	}
@@ -63,6 +65,7 @@ func Run(environment Environment, checkers []Checker, results chan<- Result) {
 
 		result := checker.Check(environment)
 		result.Checker = checker.Name
+		result.NonBlocking = checker.NonBlocking
 		results <- result
 	}
 	close(results)
@@ -71,7 +74,8 @@ func Run(environment Environment, checkers []Checker, results chan<- Result) {
 // CheckIf conditionally runs checker. A false or nil condition skips it.
 func CheckIf(checker Checker, condition func(Environment) bool, skipMessage string) Checker {
 	return Checker{
-		Name: checker.Name,
+		Name:        checker.Name,
+		NonBlocking: checker.NonBlocking,
 		Check: func(environment Environment) Result {
 			if condition == nil {
 				return Result{
@@ -97,7 +101,14 @@ func CheckIf(checker Checker, condition func(Environment) bool, skipMessage stri
 
 			result := checker.Check(environment)
 			result.Checker = checker.Name
+			result.NonBlocking = checker.NonBlocking
 			return result
 		},
 	}
+}
+
+// NonBlocking marks a checker whose failure does not fail the assignment.
+func NonBlocking(checker Checker) Checker {
+	checker.NonBlocking = true
+	return checker
 }

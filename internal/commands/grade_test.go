@@ -203,6 +203,34 @@ func TestWriteGradeReportTreatsSkippedChecksAsPassing(t *testing.T) {
 	}
 }
 
+func TestWriteCheckResultsDrainsAfterWriterError(t *testing.T) {
+	results := make(chan grader.Result)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		grader.Run(grader.Environment{}, []grader.Checker{
+			{Name: "first", Check: func(grader.Environment) grader.Result { return grader.Result{Status: grader.Passed} }},
+			{Name: "second", Check: func(grader.Environment) grader.Result { return grader.Result{Status: grader.Passed} }},
+		}, results)
+	}()
+
+	err := writeCheckResults(errorWriter{}, io.Discard, results)
+	if err == nil || !strings.Contains(err.Error(), "write check results") {
+		t.Fatalf("writeCheckResults() error = %v, want write error", err)
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("grader remained blocked after writer error")
+	}
+}
+
+type errorWriter struct{}
+
+func (errorWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write failed")
+}
+
 func TestParseDueDate(t *testing.T) {
 	location := time.FixedZone("test local", -7*60*60)
 	t.Run("date uses local end of day", func(t *testing.T) {
