@@ -318,15 +318,18 @@ func writeGradeReport(
 		}
 	}
 	outcome := "passed"
+	outcomeColor := "\x1b[32m"
 	if !report.Passed() {
 		outcome = "failed"
+		outcomeColor = "\x1b[31m"
 	}
 	if _, err := fmt.Fprintf(
 		output,
-		"\nsummary: \x1b[32m%d passed\x1b[0m, \x1b[31m%d failed\x1b[0m, \x1b[33m%d skipped\x1b[0m\nresult: %s\n",
+		"\nsummary: \x1b[32m%d passed\x1b[0m, \x1b[31m%d failed\x1b[0m, \x1b[33m%d skipped\x1b[0m\nresult: %s%s\x1b[0m\n",
 		passed,
 		failed,
 		skipped,
+		outcomeColor,
 		outcome,
 	); err != nil {
 		return fmt.Errorf("write grade report: %w", err)

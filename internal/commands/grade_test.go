@@ -108,7 +108,7 @@ func TestGradeWritesReportAndReturnsErrorWhenCheckerFails(t *testing.T) {
 	report := output.String()
 	for _, want := range []string{
 		"summary: \x1b[32m0 passed\x1b[0m, \x1b[31m1 failed\x1b[0m, \x1b[33m0 skipped\x1b[0m",
-		"result: failed",
+		"result: \x1b[31mfailed\x1b[0m",
 	} {
 		if !strings.Contains(report, want) {
 			t.Errorf("report missing %q:\n%s", want, report)
@@ -157,11 +157,13 @@ func TestWriteGradeReportStylesAndRoutesStates(t *testing.T) {
 		"\x1b[32m[SUCCESS] complete\x1b[0m",
 		"\x1b[33m[SKIPPED] optional\x1b[0m",
 		"summary: \x1b[32m1 passed\x1b[0m, \x1b[31m1 failed\x1b[0m, \x1b[33m1 skipped\x1b[0m",
+		"result: \x1b[31mfailed\x1b[0m",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout)
 		}
 	}
+
 	if strings.Contains(stdout, "[FAILED]") {
 		t.Fatalf("stdout contains failed state:\n%s", stdout)
 	}
@@ -174,6 +176,30 @@ func TestWriteGradeReportStylesAndRoutesStates(t *testing.T) {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("stderr missing %q:\n%s", want, stderr)
 		}
+	}
+
+}
+
+func TestWriteGradeReportTreatsSkippedChecksAsPassing(t *testing.T) {
+	results := make(chan grader.Result, 2)
+	results <- grader.Result{Checker: "complete", Status: grader.Passed}
+	results <- grader.Result{Checker: "optional", Status: grader.Skipped}
+	close(results)
+
+	var output strings.Builder
+	if err := writeGradeReport(
+		&output,
+		io.Discard,
+		"lab",
+		"main",
+		"abc123",
+		time.Date(2026, 9, 18, 23, 59, 59, 0, time.UTC),
+		results,
+	); err != nil {
+		t.Fatalf("writeGradeReport() error = %v", err)
+	}
+	if want := "result: \x1b[32mpassed\x1b[0m"; !strings.Contains(output.String(), want) {
+		t.Fatalf("stdout missing %q:\n%s", want, output.String())
 	}
 }
 
