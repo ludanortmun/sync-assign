@@ -53,6 +53,110 @@ func TestGradeSelectsLatestCommitAtOrBeforeDueAndCleansWorktree(t *testing.T) {
 	assertNoGradeWorktrees(t, student)
 }
 
+func TestGradeKeepWorktree(t *testing.T) {
+	for _, outcome := range []string{"passed", "failed", "mount setup failed"} {
+		t.Run(outcome, func(t *testing.T) {
+			teacher := newGradeTeacher(t, "python")
+			student := newGradeStudent(t, teacher)
+			commit := commitGradeFileAt(t, student, "lab/answer.txt", "on time", "2026-01-10T10:00:00Z")
+			commitGradeFileAt(t, student, "lab/answer.txt", "late", "2026-01-12T10:00:00Z")
+			source := t.TempDir()
+			writeWorkflowFile(t, filepath.Join(source, "sample"), "dataset")
+			var output strings.Builder
+			called := false
+			command := newGradeCommand(t, teacher, &output, io.Discard, func(environment grader.Environment) grader.Result {
+				called = true
+				writeWorkflowFile(t, filepath.Join(environment.StudentDir, "generated.txt"), "grader output")
+				status := grader.Passed
+				if outcome == "failed" {
+					status = grader.Failed
+				}
+				return grader.Result{Status: status}
+			})
+			destination := "data"
+			if outcome == "mount setup failed" {
+				destination = "answer.txt"
+			}
+			err := command.Run(context.Background(), "lab", GradeOptions{
+				RepositoryRoot: student, DueDate: "2026-01-11", KeepWorktree: true,
+				Mounts: []string{source + ":" + destination},
+			})
+			line, _, _ := strings.Cut(output.String(), "\n")
+			worktree, printed := strings.CutPrefix(line, "retained worktree: ")
+			if !printed || !filepath.IsAbs(worktree) {
+				t.Fatalf("retained worktree path not reported: %q", output.String())
+			}
+			t.Cleanup(func() {
+				if err := command.git.RemoveWorktree(context.Background(), student, worktree); err != nil {
+					t.Errorf("remove retained test worktree: %v", err)
+				}
+				if err := os.Remove(filepath.Dir(worktree)); err != nil {
+					t.Errorf("remove retained test container: %v", err)
+				}
+			})
+			if (err != nil) != (outcome != "passed") || called != (outcome != "mount setup failed") {
+				t.Fatalf("error = %v, checker called = %v", err, called)
+			}
+			canonicalWorktree, err := filepath.EvalSymlinks(worktree)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if listing := runGitCommand(t, student, "worktree", "list", "--porcelain"); !strings.Contains(listing, "worktree "+canonicalWorktree+"\n") {
+				t.Fatalf("retained worktree is no longer registered:\n%s", listing)
+			}
+			if got := strings.TrimSpace(runGitCommand(t, worktree, "rev-parse", "HEAD")); got != commit {
+				t.Errorf("retained revision = %s, want %s", got, commit)
+			}
+			if got := readWorkflowFile(t, filepath.Join(worktree, "lab/answer.txt")); got != "on time" {
+				t.Errorf("retained answer = %q", got)
+			}
+			if called {
+				if got := readWorkflowFile(t, filepath.Join(worktree, "lab/generated.txt")); got != "grader output" {
+					t.Errorf("retained grader output = %q", got)
+				}
+				mount := filepath.Join(worktree, "lab/data")
+				info, statErr := os.Lstat(mount)
+				if statErr != nil || info.Mode()&os.ModeSymlink == 0 {
+					t.Fatalf("retained mount is not a symlink: %v", statErr)
+				}
+				if got := readWorkflowFile(t, filepath.Join(mount, "sample")); got != "dataset" {
+					t.Errorf("retained dataset = %q", got)
+				}
+			}
+		})
+	}
+}
+
+type failingAddWorktreeGit struct {
+	gradeGit
+}
+
+func (failingAddWorktreeGit) AddWorktree(context.Context, string, string, string) error {
+	return errors.New("worktree creation failed deliberately")
+}
+
+func TestGradeKeepWorktreeCleansFailedCreation(t *testing.T) {
+	teacher := newGradeTeacher(t, "python")
+	student := newGradeStudent(t, teacher)
+	commitGradeFileAt(t, student, "lab/answer.txt", "answer", "2026-01-10T10:00:00Z")
+	var output strings.Builder
+	command := newGradeCommand(t, teacher, &output, io.Discard, func(grader.Environment) grader.Result {
+		t.Error("checker ran after worktree creation failed")
+		return grader.Result{Status: grader.Passed}
+	})
+	command.git = failingAddWorktreeGit{command.git}
+	err := command.Run(context.Background(), "lab", GradeOptions{
+		RepositoryRoot: student, DueDate: "2026-01-11", KeepWorktree: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "worktree creation failed deliberately") {
+		t.Fatalf("error = %v", err)
+	}
+	if strings.Contains(output.String(), "retained worktree:") {
+		t.Fatalf("reported an uncreated worktree: %q", output.String())
+	}
+	assertNoGradeWorktrees(t, student)
+}
+
 func TestGradeRejectsUnsetAndExplicitUnsupportedArchetypes(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -145,6 +249,10 @@ func TestWriteGradeReportStylesAndRoutesStates(t *testing.T) {
 		"main",
 		"abc123",
 		time.Date(2026, 9, 18, 23, 59, 59, 0, time.UTC),
+		[]gradeMount{
+			{source: "/datasets/data", destination: "data"},
+			{source: "/datasets/my models", destination: "assets/models"},
+		},
 		results,
 	)
 	if err == nil || !strings.Contains(err.Error(), "failed grading checks") {
@@ -152,6 +260,9 @@ func TestWriteGradeReportStylesAndRoutesStates(t *testing.T) {
 	}
 
 	stdout := output.String()
+	if want := "grade: lab\nbranch: main\ncommit: abc123\ndue: 2026-09-18T23:59:59Z\nmounts:\n  /datasets/data -> data\n  /datasets/my models -> assets/models\nchecks:\n"; !strings.HasPrefix(stdout, want) {
+		t.Fatalf("unexpected report header:\n%s", stdout)
+	}
 	for _, want := range []string{
 		"[RUNNING] active",
 		"\x1b[32m[SUCCESS] complete\x1b[0m",
@@ -194,12 +305,16 @@ func TestWriteGradeReportTreatsSkippedChecksAsPassing(t *testing.T) {
 		"main",
 		"abc123",
 		time.Date(2026, 9, 18, 23, 59, 59, 0, time.UTC),
+		nil,
 		results,
 	); err != nil {
 		t.Fatalf("writeGradeReport() error = %v", err)
 	}
 	if want := "result: \x1b[32mpassed\x1b[0m"; !strings.Contains(output.String(), want) {
 		t.Fatalf("stdout missing %q:\n%s", want, output.String())
+	}
+	if !strings.Contains(output.String(), "mounts: none\nchecks:\n") {
+		t.Fatalf("report does not identify absent mounts:\n%s", output.String())
 	}
 }
 

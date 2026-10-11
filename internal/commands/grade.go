@@ -18,6 +18,8 @@ import (
 
 // GradeOptions contains command-line inputs and student configuration overrides.
 type GradeOptions struct {
+	KeepWorktree   bool
+	Mounts         []string
 	RepositoryRoot string
 	ConfigPath     string
 	DueDate        string
@@ -206,6 +208,10 @@ func (command *Grade) Run(
 		)
 	}
 
+	mounts, err := resolveGradeMounts(root, options.Mounts)
+	if err != nil {
+		return err
+	}
 	container, err := os.MkdirTemp(filepath.Dir(root), ".sync-assign-grade-*")
 	if err != nil {
 		return fmt.Errorf("create grade worktree directory: %w", err)
@@ -213,6 +219,9 @@ func (command *Grade) Run(
 	worktree := filepath.Join(container, "student")
 	worktreeAdded := false
 	defer func() {
+		if options.KeepWorktree && worktreeAdded {
+			return
+		}
 		if worktreeAdded {
 			cleanupCtx := context.WithoutCancel(ctx)
 			if cleanupErr := command.git.RemoveWorktree(cleanupCtx, root, worktree); cleanupErr != nil {
@@ -227,13 +236,21 @@ func (command *Grade) Run(
 		return fmt.Errorf("create grade worktree: %w", err)
 	}
 	worktreeAdded = true
+	if options.KeepWorktree {
+		if _, err := fmt.Fprintf(command.output, "retained worktree: %s\n", worktree); err != nil {
+			return fmt.Errorf("write retained grade worktree path %q: %w", worktree, err)
+		}
+	}
+	if err := installGradeMounts(filepath.Join(worktree, spec.Path), mounts); err != nil {
+		return err
+	}
 
 	results := make(chan grader.Result)
 	go grader.Run(grader.Environment{
 		StudentDir: filepath.Join(worktree, spec.Path),
 		TeacherDir: filepath.Join(teacherMirror.Path(), spec.Path),
 	}, checkers, results)
-	if err := writeGradeReport(command.output, command.errorOutput, assignmentID, branch, commit, due, results); err != nil {
+	if err := writeGradeReport(command.output, command.errorOutput, assignmentID, branch, commit, due, mounts, results); err != nil {
 		return err
 	}
 	return nil
@@ -270,15 +287,25 @@ func writeGradeReport(
 	branch string,
 	commit string,
 	due time.Time,
+	mounts []gradeMount,
 	results <-chan grader.Result,
 ) error {
+	mountSummary := " none"
+	if len(mounts) > 0 {
+		var summary strings.Builder
+		for _, mount := range mounts {
+			fmt.Fprintf(&summary, "\n  %s -> %s", mount.source, mount.destination)
+		}
+		mountSummary = summary.String()
+	}
 	if _, err := fmt.Fprintf(
 		output,
-		"grade: %s\nbranch: %s\ncommit: %s\ndue: %s\nchecks:\n",
+		"grade: %s\nbranch: %s\ncommit: %s\ndue: %s\nmounts:%s\nchecks:\n",
 		assignmentID,
 		branch,
 		commit,
 		due.Format(time.RFC3339),
+		mountSummary,
 	); err != nil {
 		drainResults(results)
 		return fmt.Errorf("write grade report: %w", err)

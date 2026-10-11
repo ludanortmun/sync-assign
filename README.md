@@ -195,6 +195,8 @@ day in the machine's local time zone. When omitted, the current time is used.
 | Flag | Behavior |
 | --- | --- |
 | `--due=DATE` | Optional cutoff in RFC3339 or `YYYY-MM-DD` form; defaults to the current time. |
+| `--mount=SOURCE:DESTINATION` | Symlink a local directory into the assignment in the grading worktree; repeat for multiple mounts. |
+| `--keep-worktree` | Preserve the grading worktree after the run and print its path. |
 | `--config=PATH` | Read the student configuration from another path. Relative paths are resolved from the student repository root. |
 | `--branch=BRANCH` | Select the student branch; defaults to the current branch. |
 | `--pull` | Update from `origin` first. The checked-out branch is fetched and fast-forwarded only; another local branch is updated directly by fetch, which refuses non-fast-forward updates. |
@@ -222,6 +224,45 @@ the shared file:
 cd students/alan
 sync-assign grade lab-1 --due=2026-09-18 --config=../.sync-assign.yml
 ```
+
+To make local assets available in the temporary grading worktree, repeat
+`--mount=SOURCE:DESTINATION` for each directory:
+
+```sh
+sync-assign grade lab-1 --due=2026-09-18 \
+  --mount=./lab-1/data:data \
+  --mount=/srv/datasets/models:assets/models
+```
+
+Relative sources resolve from the student repository root; absolute sources
+and sources outside the repository are supported. A source must be an existing
+directory, and source symlinks are resolved. Destinations resolve from the
+assignment directory inside the temporary worktree. Missing parent directories
+are created, but an existing destination (including a dangling symlink) causes
+an error. Destinations must be relative, cannot target the assignment root or
+contain `..` or `.git` components, and cannot have symlink or file parents.
+Duplicate and overlapping destinations are rejected.
+
+Mounts are directory symlinks to live assets: their contents reflect the current
+local files regardless of `--due`, and writes through a mount affect its source.
+Cleanup removes temporary links and preserves the source directories. Mounts
+apply only to that grading invocation; unmounted ignored files remain absent.
+Use explicit source and destination paths, without mount-mode suffixes such as
+`:ro`. The final colon separates the paths, and destinations cannot contain
+colons. Quote the entire flag value when paths contain spaces.
+
+The grade report lists resolved source directories and assignment-relative
+destinations under `mounts:` alongside the branch, commit, and due date, before
+the checks. When no mounts are specified, it prints `mounts: none`.
+
+Use `--keep-worktree` to inspect the staged assignment and generated files after
+grading. The command prints `retained worktree: PATH` as soon as the worktree is
+created and keeps it even if a check or mount setup fails. Mounted directories
+remain live symlinks. The teacher mirror still follows its usual cleanup rules.
+Without this flag, the grading worktree is removed as usual.
+
+When finished, run `git worktree remove --force PATH` from the student repository
+and remove the now-empty `.sync-assign-grade-*` parent directory.
 
 The current teacher mirror is the integrity baseline, even when grading an
 older student commit. Assignments without an archetype are not gradable.
