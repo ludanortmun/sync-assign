@@ -24,14 +24,16 @@ type syncCLI struct {
 }
 
 type gradeCLI struct {
-	AssignmentID  string  `arg:"" name:"id" help:"Assignment ID from the teacher configuration."`
-	ConfigPath    string  `name:"config" type:"path" help:"Override the student configuration file path."`
-	Due           string  `help:"Grade the last commit at or before this due date."`
-	Branch        string  `help:"Student branch to grade."`
-	Pull          bool    `help:"Pull the student branch before grading."`
-	MirrorPath    *string `name:"mirror-path" type:"path" help:"Override the local teacher mirror path."`
-	Ephemeral     *bool   `help:"Use a temporary teacher mirror and remove it afterward." negatable:""`
-	TeacherBranch *string `name:"teacher-branch" help:"Override the teacher repository branch."`
+	KeepWorktree  bool     `name:"keep-worktree" help:"Keep the grading worktree after the run and print its path."`
+	Mounts        []string `name:"mount" sep:"none" placeholder:"SOURCE:DESTINATION" help:"Symlink a local directory into the assignment (repeatable)."`
+	AssignmentID  string   `arg:"" name:"id" help:"Assignment ID from the teacher configuration."`
+	ConfigPath    string   `name:"config" type:"path" help:"Override the student configuration file path."`
+	Due           string   `help:"Grade the last commit at or before this due date."`
+	Branch        string   `help:"Student branch to grade."`
+	Pull          bool     `help:"Pull the student branch before grading."`
+	MirrorPath    *string  `name:"mirror-path" type:"path" help:"Override the local teacher mirror path."`
+	Ephemeral     *bool    `help:"Use a temporary teacher mirror and remove it afterward." negatable:""`
+	TeacherBranch *string  `name:"teacher-branch" help:"Override the teacher repository branch."`
 }
 
 type checkCLI struct {
@@ -62,6 +64,8 @@ func (command *gradeCLI) Run(ctx context.Context) error {
 		return err
 	}
 	return commands.NewGrade(os.Stdout, os.Stderr).Run(ctx, command.AssignmentID, commands.GradeOptions{
+		KeepWorktree:   command.KeepWorktree,
+		Mounts:         command.Mounts,
 		RepositoryRoot: root,
 		ConfigPath:     command.ConfigPath,
 		DueDate:        command.Due,

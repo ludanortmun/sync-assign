@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -82,6 +83,7 @@ func TestCLIParsesGradeCommand(t *testing.T) {
 		"--config", "../.sync-assign.yml",
 		"--branch", "student-work",
 		"--pull",
+		"--keep-worktree",
 		"--mirror-path", ".teacher-mirror",
 		"--no-ephemeral",
 		"--teacher-branch", "fall",
@@ -100,11 +102,26 @@ func TestCLIParsesGradeCommand(t *testing.T) {
 		cli.Grade.Due != "2026-09-18T23:59:00-07:00" ||
 		!filepath.IsAbs(cli.Grade.ConfigPath) ||
 		cli.Grade.Branch != "student-work" ||
-		!cli.Grade.Pull ||
+		!cli.Grade.Pull || !cli.Grade.KeepWorktree ||
 		cli.Grade.MirrorPath == nil || *cli.Grade.MirrorPath != mirrorPath ||
 		cli.Grade.Ephemeral == nil || *cli.Grade.Ephemeral ||
 		cli.Grade.TeacherBranch == nil || *cli.Grade.TeacherBranch != "fall" {
 		t.Fatalf("parsed grade command = %#v", cli.Grade)
+	}
+}
+
+func TestCLIParsesGradeMounts(t *testing.T) {
+	cli := &cliModel{}
+	parser, err := kong.New(cli, kong.Name("sync-assign"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"./lab/data:data", "/datasets/my models:assets/my models", "./data,large:assets/data,large"}
+	if _, err := parser.Parse([]string{"grade", "lab", "--mount=" + want[0], "--mount", want[1], "--mount=" + want[2]}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(cli.Grade.Mounts, want) {
+		t.Fatalf("Mounts = %#v, want %#v", cli.Grade.Mounts, want)
 	}
 }
 
