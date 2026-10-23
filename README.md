@@ -44,6 +44,27 @@ go install github.com/ludanortmun/sync-assign@latest
 Go installs the binary in `$GOBIN`, or in `$(go env GOPATH)/bin` when `GOBIN`
 is unset. Ensure that directory is included in `PATH`.
 
+## AI agents
+
+The portable [sync-assign skill](skills/sync-assign/SKILL.md) teaches agents
+student setup, syncing, checking, teacher configuration, and grading, including
+replacement safeguards and how to interpret results.
+
+Copy the complete `skills/sync-assign/` folder into your agent's skill directory,
+including `references/` and `agents/`. For a personal Codex installation, run
+from this repository's root, provided the destination does not already exist:
+
+```sh
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
+cp -R skills/sync-assign "${CODEX_HOME:-$HOME/.codex}/skills/sync-assign"
+```
+
+If the destination exists, review and update that copy rather than nesting a
+second folder inside it. Other agents supporting `SKILL.md` can use the same
+folder in their own skill directory. The skill supports automatic discovery in
+Codex and explicit invocation as `$sync-assign`. Install the CLI separately;
+the skill does not include a binary.
+
 ## Teacher repository
 
 Place each assignment in a single top-level directory and add
@@ -135,8 +156,9 @@ options override `.sync-assign.yml` for that invocation.
 
 Without clean mode, syncing fails if the target assignment directory already
 exists. Clean mode replaces that whole directory, but first refuses to proceed
-if Git reports tracked or untracked changes within it. `--force` bypasses only
-that dirty-worktree protection and is invalid unless clean mode is enabled.
+if Git reports tracked changes, untracked files, or ignored files within it.
+`--force` bypasses only that dirty-worktree protection and is invalid unless
+clean mode is enabled.
 
 By default, a successful sync stages changes under the assignment directory
 and creates a local commit containing only that directory. Unrelated staged
@@ -165,8 +187,9 @@ live, colored report as `grade`, but evaluates the current working directory
 instead of a historical commit. Modified and untracked files are included, so
 students can validate their work before committing and pushing.
 
-The command must run from the student Git repository root. It does not create a
-commit or modify the working tree.
+The command must run from the student Git repository root. It does not stage or
+commit files. Checker tools run in the working tree and may create caches or
+generated files.
 
 ### Check flags
 
@@ -268,13 +291,20 @@ The current teacher mirror is the integrity baseline, even when grading an
 older student commit. Assignments without an archetype are not gradable.
 Checks run in this order:
 
-- `python`: main Python tests, extra-credit Python tests, then integrity checks
-  for every teacher-supplied file under a `tests` directory and every
-  `test_*.py`.
-- `jupyter`: main and extra-credit Python tests when a `tests/`
-  directory exists (otherwise both checks are skipped), main and extra-credit
-  notebook tests, cleared notebook output/execution counts, an ordered
-  teacher-cell subsequence check, then the same test-file integrity check.
+- `python`: integrity checks for every teacher-supplied file under a `tests`
+  directory and every `test_*.py`, main Python tests, then extra-credit Python
+  tests.
+- `jupyter`: the same test-file integrity check, cleared notebook
+  output/execution counts, an ordered teacher-cell subsequence check, main
+  Python tests when a `tests/` directory exists (otherwise skipped),
+  extra-credit Python tests when matching files exist, then main and
+  extra-credit notebook tests.
+
+Checks continue after failures. Extra-credit checks are skipped when no matching
+files exist, and their failures are non-blocking: they count toward the summary's
+failed checks but do not fail the overall assignment. Required check failures
+produce a failed result and a nonzero exit status. Skipped checks do not count
+as passed checks.
 
 Python tests run through `uv run` with `pytest`; notebook tests use
 `pytest --nbmake` with `nbmake`. If the assignment has `requirements.txt`, uv
