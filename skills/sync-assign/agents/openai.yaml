@@ -1,0 +1,6 @@
+interface:
+  display_name: "sync-assign"
+  short_description: "Sync, check, and grade course assignments"
+  default_prompt: "Use $sync-assign to help with assignment setup, syncing, checking, or grading."
+policy:
+  allow_implicit_invocation: true
